@@ -30,6 +30,8 @@ pkg_search_module(DSSI dssi>=0.9.0)
 mark_as_advanced(DSSI_LIBRARIES)
 pkg_search_module(LIBLO liblo>=0.26 REQUIRED)
 mark_as_advanced(LIBLO_LIBRARIES)
+pkg_search_module(MINIMAL minimal>=0.0.1)
+mark_as_advanced(MINIMAL_LIBRARIES)
 
 CHECK_FUNCTION_EXISTS(sched_setscheduler HAVE_SCHEDULER)
 
@@ -63,6 +65,8 @@ SET (DssiEnable ${DSSI_FOUND} CACHE BOOL
     "Enable DSSI Plugin compilation")
 SET (LibloEnable ${LIBLO_FOUND} CACHE BOOL
     "Enable Liblo")
+SET (MinimalEnable ${MINIMAL_FOUND} CACHE BOOL
+    "Enable Minimal Plugin compilation")
 
 # Now, handle the incoming settings and set define flags/variables based
 # on this
@@ -197,6 +201,19 @@ if(LibloEnable)
     list(APPEND AUDIO_LIBRARIES ${LIBLO_LIBRARIES})
 	list(APPEND AUDIO_LIBRARY_DIRS ${LIBLO_LIBRARY_DIRS})
 	message(STATUS "Compiling with liblo")
+endif()
+
+if(MinimalEnable)
+
+	pkg_check_modules(SNDFILE sndfile)
+	list(APPEND AUDIO_LIBRARIES ${SNDFILE_LIBRARIES})
+	list(APPEND AUDIO_LIBRARY_DIRS ${SNDFILE_LIBRARY_DIRS})
+	
+	include_directories(${MINIMAL_INCLUDE_DIRS})
+	list(APPEND AUDIO_LIBRARIES ${MINIMAL_LIBRARIES})
+	list(APPEND AUDIO_LIBRARY_DIRS ${MINIMAL_LIBRARY_DIRS})
+	message("AUDIO LIBRARIES:" ${AUDIO_LIBRARIES})
+	message("AUDIO LIBRARY DIRS:" ${AUDIO_LIBRARY_DIRS})
 endif()
 
 # other include directories
@@ -366,7 +383,6 @@ if(CompileTests)
 	add_subdirectory(Tests)
 endif(CompileTests)
 
-
 add_executable(zynaddsubfx main.cpp)
 
 #Warning: the required ordering of these to get proper linking depends upon the
@@ -398,9 +414,19 @@ if (DssiEnable)
 	endif ()
 endif()
 
+if(MinimalEnable)
+	add_library(minimal-zyn MODULE Output/minimal.cpp)
+	if (${CMAKE_SIZEOF_VOID_P} EQUAL "8")
+		install(TARGETS minimal-zyn LIBRARY DESTINATION lib64/minimal_plugins/)
+	else ()
+		install(TARGETS minimal-zyn LIBRARY DESTINATION lib/minimal_plugins/)
+	endif ()
+endif()
+
 install(TARGETS zynaddsubfx
 	RUNTIME DESTINATION bin
 	)
+
 if(NtkGui)
     install(DIRECTORY ../pixmaps DESTINATION share/zynaddsubfx)
 endif(NtkGui)
@@ -441,6 +467,7 @@ package_status(CXXTEST_FOUND    "CxxTest  " "found"   ${Yellow})
 #TODO GUI MODULE
 package_status(LASH_FOUND       "Lash     " "enabled" ${Yellow})
 package_status(DSSI_FOUND       "DSSI     " "enabled" ${Yellow})
+package_status(MINIMAL_FOUND    "minimal  " "enabled" ${Yellow})
 package_status(LIBLO_FOUND      "liblo    " "enabled" ${Red})
 package_status(FLTK_FOUND       "fltk     " "found"   ${Yellow})
 package_status(NTK_FOUND        "ntk      " "found"   ${Yellow})
