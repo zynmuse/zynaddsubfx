@@ -42,29 +42,21 @@ NSM_Client *nsm = 0;
 #include <unistd.h>
 #include <climits>
 
-class ZynMinimalPlugin : public minimal_plugin
+namespace mini {
+
+zyn_tree_t::zyn_tree_t(const char *name) :
+	zyn::znode_t(this, "", ""),
+	audio_instrument_t(name),
+	notes_t_port(this, "", "noteOn")
 {
-	// globals are annoying. we can not use them in this class
-	//MiddleWare *middleware;
-	//SYNTH_T *synth;
-	sample_rate_t sample_rate;
-	std::thread* loadThread;
-	using snd_seq_event_t = int;
-	void run_synth(unsigned long sample_count, snd_seq_event_t *, unsigned long);
-	
-	float *outl;
-	float *outr;
-public:
-	ZynMinimalPlugin(sample_rate_t srate) : sample_rate(srate) {}
-	void _send_osc_cmd(const char* cmd) {
-		middleware->transmitMsg(cmd);
-	}
-	void prepare();
-	bool proceed(sample_t sample_count) {
-		run_synth(sample_count, nullptr, 0ul);
-		return true;
-	}
-};
+}
+
+command_base *zynaddsubfx_t::make_close_command() const
+{
+	return new command<>("/close-ui");
+}
+
+}
 
 void ZynMinimalPlugin::prepare()
 {
