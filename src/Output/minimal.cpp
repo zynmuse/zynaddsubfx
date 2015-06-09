@@ -147,7 +147,7 @@ void ZynMinimalPlugin::run_synth(unsigned long sample_count,
     } while(to_frame < sample_count);
 }
 
-minimal_plugin *instantiate(unsigned long sample_rate)
+mini::instrument_t *instantiate(unsigned long sample_rate)
 {
 	return new ZynMinimalPlugin(sample_rate);
 	//return const_cast<char*>("abcdefghhhhhhhhhhhhhhhhhhhhh");

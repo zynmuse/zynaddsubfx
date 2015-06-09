@@ -24,12 +24,13 @@
 #define MINIMAL_H
 
 class MiddleWare;
-class SYNTH_T;
+struct SYNTH_T;
 
 // TODO: include own header
 // #include <iostream> // TODO!!
 
 #include <vector>
+#include "minimal/sample.h"
 #include "minimal/audio_instrument.h" // TODO: separate audio_instrument_t ?
 #include "minimal/command_tools.h"
 #include "minimal/mports.h"
@@ -38,6 +39,10 @@ class SYNTH_T;
 
 #include "minimal_external.h"
 
+namespace std
+{
+	class thread;
+}
 
 namespace mini
 {

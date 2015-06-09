@@ -29,7 +29,7 @@ extern "C" {
 
 // TODO: not sure whether we need to return void*,
 // however, this seems to work
-minimal_plugin *instantiate(unsigned long sample_rate);
+mini::instrument_t *instantiate(unsigned long sample_rate);
 
 #ifdef __cplusplus
 }
