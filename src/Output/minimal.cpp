@@ -56,9 +56,7 @@ command_base *zynaddsubfx_t::make_close_command() const
 	return new command<>("/close-ui");
 }
 
-}
-
-void ZynMinimalPlugin::prepare()
+void zynaddsubfx_t::prepare()
 {
 	synth = new SYNTH_T;
 	synth->samplerate = sample_rate;
@@ -83,7 +81,7 @@ void ZynMinimalPlugin::prepare()
 		}});
 }
 
-void ZynMinimalPlugin::run_synth(unsigned long sample_count,
+void zynaddsubfx_t::run_synth(unsigned long sample_count,
 		snd_seq_event_t *,
 		unsigned long )
 {
@@ -149,7 +147,19 @@ void ZynMinimalPlugin::run_synth(unsigned long sample_count,
 
 mini::instrument_t *instantiate(unsigned long sample_rate)
 {
-	return new ZynMinimalPlugin(sample_rate);
+	return new zynaddsubfx_t(sample_rate);
 	//return const_cast<char*>("abcdefghhhhhhhhhhhhhhhhhhhhh");
+}
+
+void zynaddsubfx_t::set_sample_rate(sample_rate_t srate) { sample_rate = srate; }
+	void _send_osc_cmd(const char* cmd) {
+	middleware->transmitMsg(cmd);
+}
+bool zynaddsubfx_t::advance(sample_t sample_count) {
+	assert(sample_rate);
+	run_synth(sample_count, nullptr, 0ul);
+	return true;
+}
+
 }
 

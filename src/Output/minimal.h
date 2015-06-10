@@ -372,18 +372,11 @@ public:
 	using zyn_tree_t::zyn_tree_t;
 	~zynaddsubfx_t() = default;
 		
-	void set_sample_rate(sample_rate_t srate) { sample_rate = srate; }
-		void _send_osc_cmd(const char* cmd) {
-		middleware->transmitMsg(cmd);
-	}
+	void set_sample_rate(sample_rate_t srate); // TODO: inline?
 	void prepare();
-	bool advance(sample_t sample_count) {
-		assert(sample_rate);
-		run_synth(sample_count, nullptr, 0ul);
-		return true;
-	}
+	bool advance(sample_t sample_count); // TODO: inline?
 	
-	
+	void initialize_first() { prepare(); }
 };
 
 }
