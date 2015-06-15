@@ -58,8 +58,14 @@ command_base *zynaddsubfx_t::make_close_command() const
 
 void zynaddsubfx_t::prepare()
 {
+set_sample_rate(44100); // TODO!!
+
+
+    std::clog << "Starting zynaddsubfx..." << std::endl;
+    std::clog << "  (this is a good sign...)" << std::endl;
+    
 	synth = new SYNTH_T;
-	synth->samplerate = sample_rate;
+	//synth->samplerate = sample_rate; // TODO!!!
 	
 	//    this->sampleRate  = srate;
 	//    this->banksInited = false;
@@ -69,16 +75,16 @@ void zynaddsubfx_t::prepare()
 	sprng(time(NULL));
 	denormalkillbuf = new float [synth->buffersize];
 	for(int i = 0; i < synth->buffersize; i++)
-	denormalkillbuf[i] = (RND - 0.5f) * 1e-16;
+	 denormalkillbuf[i] = (RND - 0.5f) * 1e-16;
 	
 	synth->alias();
 	middleware = new MiddleWare();
 	middleware->spawnMaster()->bank.rescanforbanks();
-	loadThread = new std::thread([this]() {
+	/*loadThread = new std::thread([this]() {
 		while(middleware) {
 		middleware->tick();
 		usleep(1000);
-		}});
+		}});*/
 }
 
 void zynaddsubfx_t::run_synth(unsigned long sample_count,
@@ -145,18 +151,24 @@ void zynaddsubfx_t::run_synth(unsigned long sample_count,
     } while(to_frame < sample_count);
 }
 
-mini::instrument_t *instantiate(unsigned long sample_rate)
+void zynaddsubfx_t::send_osc_cmd(const char * msg)
+{
+    std::cerr << "sending OSC cmd..." << std::endl;
+    middleware->transmitMsg(msg);
+}
+
+/*mini::instrument_t *instantiate(unsigned long sample_rate)
 {
 	return new zynaddsubfx_t(sample_rate);
 	//return const_cast<char*>("abcdefghhhhhhhhhhhhhhhhhhhhh");
-}
+}*/
 
 void zynaddsubfx_t::set_sample_rate(sample_rate_t srate) { sample_rate = srate; }
 	void _send_osc_cmd(const char* cmd) {
 	middleware->transmitMsg(cmd);
 }
 bool zynaddsubfx_t::advance(sample_t sample_count) {
-	assert(sample_rate);
+	//assert(sample_rate);
 	run_synth(sample_count, nullptr, 0ul);
 	return true;
 }

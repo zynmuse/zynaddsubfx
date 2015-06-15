@@ -204,7 +204,6 @@ if(LibloEnable)
 endif()
 
 if(MinimalEnable)
-
 	pkg_check_modules(SNDFILE sndfile)
 	list(APPEND AUDIO_LIBRARIES ${SNDFILE_LIBRARIES})
 	list(APPEND AUDIO_LIBRARY_DIRS ${SNDFILE_LIBRARY_DIRS})
@@ -212,8 +211,6 @@ if(MinimalEnable)
 	include_directories(${MINIMAL_INCLUDE_DIRS})
 	list(APPEND AUDIO_LIBRARIES ${MINIMAL_LIBRARIES})
 	list(APPEND AUDIO_LIBRARY_DIRS ${MINIMAL_LIBRARY_DIRS})
-	message("AUDIO LIBRARIES:" ${AUDIO_LIBRARIES})
-	message("AUDIO LIBRARY DIRS:" ${AUDIO_LIBRARY_DIRS})
 endif()
 
 # other include directories
@@ -415,12 +412,48 @@ if (DssiEnable)
 endif()
 
 if(MinimalEnable)
-	add_library(minimal-zyn MODULE Output/minimal.cpp)
-	if (${CMAKE_SIZEOF_VOID_P} EQUAL "8")
-		install(TARGETS minimal-zyn LIBRARY DESTINATION lib64/minimal_plugins/)
-	else ()
-		install(TARGETS minimal-zyn LIBRARY DESTINATION lib/minimal_plugins/)
-	endif ()
+	# variables
+	get_property(LIB64 GLOBAL PROPERTY FIND_LIBRARY_USE_LIB64_PATHS)
+	if("${LIB64}" STREQUAL "TRUE")
+		set(LIBSUFFIX 64)
+	else()
+		set(LIBSUFFIX "")
+	endif()
+	
+	set(INSTALL_LIB_DIR "lib${LIBSUFFIX}" CACHE PATH "Installation directory for libraries")
+	set(INSTALL_INC_DIR "include" CACHE PATH "Installation directory for headers")
+	mark_as_advanced(
+		INSTALL_LIB_DIR
+		INSTALL_INC_DIR
+		)
+	file(GLOB minimal-hdr ${CMAKE_CURRENT_SOURCE_DIR}/Output/*.h)
+	
+	SET(PLUGIN_NAME "minimal-zynaddsubfx")
+	
+	
+	# configure
+	configure_file(${CMAKE_CURRENT_SOURCE_DIR}/Output/${PLUGIN_NAME}.pc.in
+		${CMAKE_CURRENT_BINARY_DIR}/Output/${PLUGIN_NAME}.pc @ONLY)
+	
+	# add library
+	add_library(minimal-zynaddsubfx MODULE Output/minimal.cpp)
+	target_link_libraries(minimal-zynaddsubfx
+		zynaddsubfx_core
+#		zynaddsubfx_nio
+		zynaddsubfx_gui_bridge
+		${GUI_LIBRARIES}
+#		${NIO_LIBRARIES}
+		${AUDIO_LIBRARIES}
+	)
+	
+	# install
+	install(FILES "${CMAKE_CURRENT_BINARY_DIR}/Output/${PLUGIN_NAME}.pc"
+		DESTINATION "${INSTALL_LIB_DIR}/pkgconfig")
+	install(FILES "${CMAKE_CURRENT_BINARY_DIR}/Output/${PLUGIN_NAME}.pc"
+		DESTINATION "${INSTALL_LIB_DIR}/pkgconfig")
+	install(FILES ${minimal-hdr}
+		DESTINATION "${INSTALL_INC_DIR}/minimal")
+	install(TARGETS minimal-zynaddsubfx LIBRARY DESTINATION ${INSTALL_LIB_DIR}/minimal-plugins/)
 endif()
 
 install(TARGETS zynaddsubfx

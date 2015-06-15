@@ -213,6 +213,7 @@ private:
 			else
 			{
 				// for self_port_t, on_read is not virtual, so we call it manually...
+				// -> TODO?? probably the above comment is deprecated
 				std::pair<int, int> p2 = notes_in::data->lines[rch.first][rch.second];
 				
 				if(p2.first >= 0) // i.e. note on
@@ -366,17 +367,19 @@ class zynaddsubfx_t : public zyn_tree_t
 	using snd_seq_event_t = int;
 	void run_synth(unsigned long sample_count, snd_seq_event_t *, unsigned long);
 	
-	float *outl;
+	float *outl; // TODO: -> into class?
 	float *outr;
 public:
 	using zyn_tree_t::zyn_tree_t;
 	~zynaddsubfx_t() = default;
-		
+	
+	void send_osc_cmd(const char*msg);
+	
 	void set_sample_rate(sample_rate_t srate); // TODO: inline?
 	void prepare();
 	bool advance(sample_t sample_count); // TODO: inline?
 	
-	void initialize_first() { prepare(); }
+	void instantiate_first() { prepare(); }
 };
 
 }

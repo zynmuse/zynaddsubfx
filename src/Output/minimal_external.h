@@ -27,6 +27,7 @@
 extern "C" {
 #endif
 
+// TODO: not needed?
 // TODO: not sure whether we need to return void*,
 // however, this seems to work
 mini::instrument_t *instantiate(unsigned long sample_rate);
