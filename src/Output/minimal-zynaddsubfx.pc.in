@@ -1,0 +1,10 @@
+install_prefix=@CMAKE_INSTALL_PREFIX@
+include_prefix=${install_prefix}/@INSTALL_INC_DIR@
+lib_prefix=${install_prefix}/@INSTALL_LIB_DIR@/minimal-plugins
+
+Name: minimal-zynaddsubfx
+Description: zynaddsubfx plugin for the minimal sequencer
+Version: @VERSION@
+Libs: -L${lib_prefix} -lminimal-zynaddsubfx
+Cflags: -I${include_prefix}
+
