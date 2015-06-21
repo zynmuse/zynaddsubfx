@@ -87,6 +87,23 @@ set_sample_rate(44100); // TODO!!
 		}});*/
 }
 
+struct master_functor
+{
+    Master* _master;
+    sample_rate_t sample_rate;
+    void operator()(std::size_t , std::size_t amnt,
+        mini::Stereo<float>* dest)
+    {
+        io::mlog << "amnt: " << amnt << io::endl;
+        // first arg is not needed: master currently counts it itself
+        // (TODO: allow master to start at offset)
+        if(! dest)
+         io::mlog << "WARNING 1..." << io::endl;
+        io::mlog << "buf: " << dest << io::endl;
+        _master->GetAudioOutSamplesStereo(amnt, (int)sample_rate, dest);
+    }
+};
+
 void zynaddsubfx_t::run_synth(unsigned long sample_count,
 		snd_seq_event_t *,
 		unsigned long )
@@ -98,33 +115,14 @@ void zynaddsubfx_t::run_synth(unsigned long sample_count,
 
     Master *master = middleware->spawnMaster();
 
-    do {
-        /* Find the time of the next event, if any */
-#if 0
-        if((events == NULL) || (event_index >= event_count))
-            next_event_frame = ULONG_MAX;
-        else
-            next_event_frame = events[event_index].time.tick;
-#else
-        next_event_frame = ULONG_MAX;
-#endif
-        /* find the end of the sub-sample to be processed this time round... */
-        /* if the next event falls within the desired sample interval... */
-        if((next_event_frame < sample_count) && (next_event_frame >= to_frame))
-            /* set the end to be at that event */
-            to_frame = next_event_frame;
-        else
-            /* ...else go for the whole remaining sample */
-            to_frame = sample_count;
-        if(from_frame < to_frame) {
-            // call master to fill from `from_frame` to `to_frame`:
-            master->GetAudioOutSamples(to_frame - from_frame,
-                                       (int)sample_rate,
-                                       &(outl[from_frame]),
-                                       &(outr[from_frame]));
-            // next sub-sample please...
-            from_frame = to_frame;
-        }
+    if( data.write_space() < sample_count )
+      throw "warning: not enough write space! :-(";
+    
+    io::mlog << "buf: " << &data << io::endl;
+
+    master_functor mf { master, zynaddsubfx_t::sample_rate };
+    data.write_func(mf, sample_count);
+    
 #if 0
         // Now process any event(s) at the current timing point
         while(events != NULL && event_index < event_count
@@ -146,9 +144,6 @@ void zynaddsubfx_t::run_synth(unsigned long sample_count,
             event_index++;
         }
 #endif
-
-        // Keep going until we have the desired total length of sample...
-    } while(to_frame < sample_count);
 }
 
 void zynaddsubfx_t::send_osc_cmd(const char * msg)
@@ -163,11 +158,11 @@ void zynaddsubfx_t::send_osc_cmd(const char * msg)
 	//return const_cast<char*>("abcdefghhhhhhhhhhhhhhhhhhhhh");
 }*/
 
-void zynaddsubfx_t::set_sample_rate(sample_rate_t srate) { sample_rate = srate; }
+void zynaddsubfx_t::set_sample_rate(sample_rate_t srate) { zynaddsubfx_t::sample_rate = srate; }
 	void _send_osc_cmd(const char* cmd) {
 	middleware->transmitMsg(cmd);
 }
-bool zynaddsubfx_t::advance(sample_t sample_count) {
+bool zynaddsubfx_t::advance(sample_no_t sample_count) {
 	//assert(sample_rate);
 	run_synth(sample_count, nullptr, 0ul);
 	return true;

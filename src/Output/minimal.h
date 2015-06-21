@@ -204,7 +204,7 @@ private:
 			set_trigger(); // TODO: here?
 		}
 
-		void on_read(sample_t pos)
+		void on_read(sample_no_t pos)
 		{
 			io::mlog << "zyn notes port::on_read" << io::endl;
 			for(const std::pair<int, int>& rch : notes_in::data->recently_changed)
@@ -369,6 +369,9 @@ class zynaddsubfx_t : public zyn_tree_t
 	
 	float *outl; // TODO: -> into class?
 	float *outr;
+	
+	std::size_t smp_pos = 0;
+	
 public:
 	using zyn_tree_t::zyn_tree_t;
 	~zynaddsubfx_t() = default;
@@ -377,7 +380,7 @@ public:
 	
 	void set_sample_rate(sample_rate_t srate); // TODO: inline?
 	void prepare();
-	bool advance(sample_t sample_count); // TODO: inline?
+	bool advance(sample_no_t sample_count); // TODO: inline?
 	
 	void instantiate_first() { prepare(); }
 };

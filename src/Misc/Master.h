@@ -167,6 +167,60 @@ class Master
         rtosc::ThreadLink *bToU;
         rtosc::ThreadLink *uToB;
         bool pendingMemory;
+        
+        off_t  offl = 0, offr = 0;
+        
+        template<class StereoType>
+        void GetAudioOutSamplesStereo(size_t nsamples,
+                                unsigned samplerate,
+                                StereoType* outs)
+{
+    off_t out_off = 0;
+    if(outs == nullptr)
+        printf("WARNING!!! !outs\n");
+
+    //Fail when resampling rather than doing a poor job
+    if(synth->samplerate != samplerate) {
+        printf("darn it: %d vs %d\n", synth->samplerate, samplerate);
+        return;
+    }
+    
+    const auto zip_buffers = [&](std::size_t n_smps) {
+        StereoType* i = outs + out_off;
+        const StereoType* const iend = i + n_smps;
+        const float *jl = bufl + off,
+            *jr = bufr + off;
+        for(; i < iend; ++i, ++jl, ++jr)
+            (*i)[0] = *jl, (*i)[1] = *jr;
+    };
+    
+    while(nsamples) {
+        //use all available samples
+        if(nsamples >= smps) {
+            
+            zip_buffers(smps);
+            
+            //memcpy(outl + out_off, bufl + off, sizeof(float) * smps);
+            //memcpy(outr + out_off, bufr + off, sizeof(float) * smps);
+            nsamples -= smps;
+
+            //generate samples
+            AudioOut(bufl, bufr);
+            off  = 0;
+            out_off  += smps;
+            smps = synth->buffersize;
+        }
+        else {   //use some samples
+        
+            zip_buffers(nsamples);
+        
+            smps    -= nsamples;
+            off     += nsamples;
+            nsamples = 0;
+        }
+    }
+}
+        
     private:
         float  sysefxvol[NUM_SYS_EFX][NUM_MIDI_PARTS];
         float  sysefxsend[NUM_SYS_EFX][NUM_SYS_EFX];
