@@ -216,6 +216,8 @@ private:
 				// -> TODO?? probably the above comment is deprecated
 				std::pair<int, int> p2 = notes_in::data->lines[rch.first][rch.second];
 				
+				io::mlog << "first, second: " << p2.first << ", " << p2.second << io::endl;
+				
 				if(p2.first >= 0) // i.e. note on
 				{
 					m_note_on_t& note_on_cmd = note_ons[rch.first];
@@ -354,6 +356,8 @@ public:
 
 class zynaddsubfx_t : public zyn_tree_t
 {
+	sample_no_t samples_played = 0;
+
 	// globals are annoying. we can not use them in this class
 	//MiddleWare *middleware;
 	//SYNTH_T *synth;
@@ -365,7 +369,7 @@ class zynaddsubfx_t : public zyn_tree_t
 	std::thread* loadThread;
 	
 	using snd_seq_event_t = int;
-	void run_synth(unsigned long sample_count, snd_seq_event_t *, unsigned long);
+	void run_synth(unsigned long, snd_seq_event_t *, unsigned long);
 	
 	float *outl; // TODO: -> into class?
 	float *outr;
@@ -380,7 +384,7 @@ public:
 	
 	void set_sample_rate(sample_rate_t srate); // TODO: inline?
 	void prepare();
-	bool advance(sample_no_t sample_count); // TODO: inline?
+	bool advance(); // TODO: inline?
 	
 	void instantiate_first() { prepare(); }
 };

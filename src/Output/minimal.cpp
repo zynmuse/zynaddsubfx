@@ -72,7 +72,7 @@ set_sample_rate(44100); // TODO!!
 	
 	config.init();
 	
-	sprng(time(NULL));
+	sprng(::time(nullptr));
 	denormalkillbuf = new float [synth->buffersize];
 	for(int i = 0; i < synth->buffersize; i++)
 	 denormalkillbuf[i] = (RND - 0.5f) * 1e-16;
@@ -99,29 +99,36 @@ struct master_functor
         // (TODO: allow master to start at offset)
         if(! dest)
          io::mlog << "WARNING 1..." << io::endl;
-        io::mlog << "buf: " << dest << io::endl;
+        io::mlog << "buf2: " << dest << io::endl;
         _master->GetAudioOutSamplesStereo(amnt, (int)sample_rate, dest);
     }
 };
 
-void zynaddsubfx_t::run_synth(unsigned long sample_count,
+void zynaddsubfx_t::run_synth(unsigned long ,
 		snd_seq_event_t *,
 		unsigned long )
 {
-    unsigned long from_frame       = 0;
-//  unsigned long event_index      = 0;
-    unsigned long next_event_frame = 0;
-    unsigned long to_frame = 0;
-
+    if(samples_played <= time())
+    {
     Master *master = middleware->spawnMaster();
 
-    if( data.write_space() < sample_count )
-      throw "warning: not enough write space! :-(";
+//    io::mlog << "write space: " << data.write_space()
+//        << " samples: " << sample_count << io::endl;
     
-    io::mlog << "buf: " << &data << io::endl;
+    if( data.write_space() < (std::size_t)synth->buffersize )
+        throw "warning: not enough write space! :-(";
+    
+    io::mlog << "buf1: " << &data << io::endl;
 
     master_functor mf { master, zynaddsubfx_t::sample_rate };
-    data.write_func(mf, sample_count);
+    data.write_func(mf, synth->buffersize); // TODO: not sure about this value
+    samples_played += synth->buffersize;
+    }
+    
+    
+     // TODO: not sure about this value:
+    set_next_time(time() + synth->buffersize);
+    
     
 #if 0
         // Now process any event(s) at the current timing point
@@ -148,7 +155,6 @@ void zynaddsubfx_t::run_synth(unsigned long sample_count,
 
 void zynaddsubfx_t::send_osc_cmd(const char * msg)
 {
-    std::cerr << "sending OSC cmd..." << std::endl;
     middleware->transmitMsg(msg);
 }
 
@@ -159,12 +165,10 @@ void zynaddsubfx_t::send_osc_cmd(const char * msg)
 }*/
 
 void zynaddsubfx_t::set_sample_rate(sample_rate_t srate) { zynaddsubfx_t::sample_rate = srate; }
-	void _send_osc_cmd(const char* cmd) {
-	middleware->transmitMsg(cmd);
-}
-bool zynaddsubfx_t::advance(sample_no_t sample_count) {
+
+bool zynaddsubfx_t::advance() {
 	//assert(sample_rate);
-	run_synth(sample_count, nullptr, 0ul);
+	run_synth(0, nullptr, 0ul);
 	return true;
 }
 
