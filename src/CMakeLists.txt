@@ -2,9 +2,22 @@
 message(STATUS "Checking Include Path" $ENV{CMAKE_INCLUDE_PATH} ${CMAKE_INCLUDE_PATH})
 message(STATUS "Checking Library Path" $ENV{CMAKE_LIBRARY_PATH} ${CMAKE_LIBRARY_PATH})
 
+get_property(LIB64 GLOBAL PROPERTY FIND_LIBRARY_USE_LIB64_PATHS)
+if("${LIB64}" STREQUAL "TRUE")
+    set(LIBSUFFIX 64)
+else()
+    set(LIBSUFFIX "")
+endif()
+
 #Dependency check
 include(CheckFunctionExists)
 find_package(PkgConfig REQUIRED)
+
+#Apply pkg config paths for some apps
+if(MinimalDir)
+    set(ENV{PKG_CONFIG_PATH} "${PKG_CONFIG_PATH}:${MinimalDir}/lib${LIBSUFFIX}/pkgconfig/")
+endif()
+
 find_package(zlib REQUIRED)
 find_package(X11)
 pkg_check_modules(FFTW REQUIRED fftw3)
@@ -213,6 +226,10 @@ if(MinimalEnable)
 	list(APPEND AUDIO_LIBRARY_DIRS ${MINIMAL_LIBRARY_DIRS})
 endif()
 
+# build env script with all options set
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/env.in
+	${CMAKE_CURRENT_BINARY_DIR}/env @ONLY)
+
 # other include directories
 include_directories(${ZLIB_INCLUDE_DIRS} ${MXML_INCLUDE_DIRS})
 
@@ -413,13 +430,6 @@ endif()
 
 if(MinimalEnable)
 	# variables
-	get_property(LIB64 GLOBAL PROPERTY FIND_LIBRARY_USE_LIB64_PATHS)
-	if("${LIB64}" STREQUAL "TRUE")
-		set(LIBSUFFIX 64)
-	else()
-		set(LIBSUFFIX "")
-	endif()
-	
 	set(INSTALL_LIB_DIR "lib${LIBSUFFIX}" CACHE PATH "Installation directory for libraries")
 	set(INSTALL_INC_DIR "include" CACHE PATH "Installation directory for headers")
 	mark_as_advanced(
@@ -500,7 +510,7 @@ package_status(CXXTEST_FOUND    "CxxTest  " "found"   ${Yellow})
 #TODO GUI MODULE
 package_status(LASH_FOUND       "Lash     " "enabled" ${Yellow})
 package_status(DSSI_FOUND       "DSSI     " "enabled" ${Yellow})
-package_status(MINIMAL_FOUND    "minimal  " "enabled" ${Yellow})
+package_status(MinimalEnable    "minimal  " "enabled" ${Yellow})
 package_status(LIBLO_FOUND      "liblo    " "enabled" ${Red})
 package_status(FLTK_FOUND       "fltk     " "found"   ${Yellow})
 package_status(NTK_FOUND        "ntk      " "found"   ${Yellow})
