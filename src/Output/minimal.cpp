@@ -45,7 +45,7 @@ NSM_Client *nsm = 0;
 namespace mini {
 
 zyn_tree_t::zyn_tree_t(const char *name) :
-	zyn::znode_t(this, "", ""),
+	nnode("", nullptr),
 	audio_instrument_t(name),
 	notes_t_port(this, "", "noteOn")
 {

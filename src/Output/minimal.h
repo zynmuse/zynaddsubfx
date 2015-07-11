@@ -28,6 +28,7 @@ struct SYNTH_T;
 
 // TODO: include own header
 // #include <iostream> // TODO!!
+#include <map>
 
 #include <vector>
 #include "minimal/sample.h"
@@ -51,28 +52,132 @@ class zyn_tree_t;
 
 namespace zyn {
 
-struct znode_t : public node_t<zyn_tree_t>
-{
-	bool used;
-	using node_t<zyn_tree_t>::node_t;
-};
-
 template<class PortT>
 using port = in_port_with_command<zyn_tree_t, PortT>;
 
-class amp_env : public znode_t
+}
+
+template<class Access>
+class single_ptr
+{
+	Access* acc = nullptr;
+public:
+	template<class ...Args>
+	Access* get(Args... args) {
+		return (acc == nullptr)
+			? (acc = new Access(args...))
+			: acc;
+	}
+	Access* operator->() {
+		return get<>();
+	}
+};
+
+class nnode : public named_t
+{
+private:
+	void register_as_child(nnode* child) {
+		children.emplace(child, false);
+	}
+protected: // TODO?
+	// TODO: call this the other way in the future?
+	virtual instrument_t* get_ins() {
+		return parent->get_ins();
+	}
+
+protected:
+	std::map<nnode*, bool> children;
+	nnode* parent = nullptr;
+public:
+	struct ctor
+	{
+		class nnode* parent;
+		const char* name;
+		ctor(nnode* parent, const char* name) :
+			parent(parent),
+			name(name) {}
+	};
+
+	nnode(const char* ext, nnode* parent) :
+		named_t(ext), parent(parent) {
+		if(parent)
+		 parent->register_as_child(this);
+	}
+
+	void print_parent_chain() {
+		no_rt::mlog << name() << " -> " << std::endl;
+		if(parent)
+		 parent->print_parent_chain();
+		else
+		 no_rt::mlog << "(root)" << std::endl;
+	}
+
+	void print_tree(unsigned initial_depth = 0) {
+		for(unsigned i = 0; i < initial_depth; ++i)
+		 no_rt::mlog << "  ";
+
+		no_rt::mlog << "- " << name() << std::endl;
+		unsigned next_depth = initial_depth + 1;
+		for(const auto& pr : children)
+		 pr.first->print_tree(next_depth) ;
+	}
+
+
+	std::string full_path() const {
+		return parent
+			? parent->full_path() + "/" + name()
+			: /*"/" +*/ name(); // TODO: why does this work??
+	}
+
+	template<class PortT> PortT& add_if_new(const std::string& ext)
+	{
+		return *new PortT(get_ins(), full_path() + "/", ext);
+		//return static_cast<PortT&>(
+		//	*used_ch.emplace(ext, new NodeT(ins, name(), ext)).
+		//	first->second);
+	}
+
+	template<class PortT>
+	PortT& spawn(const std::string& ext) {
+		return add_if_new<PortT>(ext);
+	}
+};
+
+template<class NodeT, char... Ext>
+class build : single_ptr<NodeT>
+{
+protected:
+	nnode* parent = nullptr;
+	const char* name = "/";
+public:
+	//nnode_builder(nnode* parent) : parent(parent) {}
+	build() = default;
+
+	build(const nnode::ctor& ctor) :
+		parent(ctor.parent),
+		name(ctor.name)
+		{}
+
+	NodeT* operator->() {
+		return single_ptr<NodeT>::get(name, parent);
+	}
+};
+
+struct kit0 : nnode
+{
+	using nnode::nnode;
+};
+
+class amp_env_t : public nnode
 {
 public:
-	using znode_t::znode_t;
-	/*template<class Port1>*/
-/*	zyn::p_envsustain envsustain() const {
-		ins->add_in_port(new );
-		//return p_envsustain();
-	}*/
+	using nnode::nnode;
 	template<class Port>
 	zyn::port<Port>& envsustain() {
 		return spawn<zyn::port<Port>>("Penvsustain");
-	}
+		//return new param_t("envsustain", ins);
+
+	} // TODO: own envsustain class with operator() ?
 
 	/*template<class Port1>
 	zyn::p_envsustain<Port1> envsustain(oint<Port1> con) const {
@@ -80,57 +185,44 @@ public:
 	}*/
 };
 
-class global : public znode_t
+class global : public nnode
 {
 public:
-	using znode_t::znode_t;
-	zyn::amp_env amp_env() {
-		return spawn<zyn::amp_env>("AmpEnvelope");
-	}
+	using nnode::nnode;
+	/*amp_env_t amp_env() {
+		return spawn<amp_env_t>("AmpEnvelope");
+	}*/
+	build<amp_env_t> amp_env_t = ctor(this, "AmpEnvelope");
 };
 
 
-class voice0 : public znode_t
+class voice0 : public nnode
 {
 public:
-	using znode_t::znode_t;
+	using nnode::nnode;
 };
 
-class padpars : public znode_t
+class padpars : public nnode
 {
+	void on_preinit() { // TODO
+//		ins->add_const_command(command<bool>("... pad enabled", true));
+	}
 public:
-	using znode_t::znode_t;
-/*	zyn::voice0 voice0() const {
-		return spawn<zyn::voice0>("voice0");
-	}
-	zyn::global global() const {
-		return spawn<zyn::global>("global");
-	}*/ // TODO
-	//padpars() {}
-
-	void on_preinit() {
-		ins->add_const_command(command<bool>("... pad enabled", true));
-	}
+	using nnode::nnode;
 };
 
-class adpars : public znode_t
+class adpars : public nnode
 {
+	void on_preinit() { // TODO
+//		ins->add_const_command(command<bool>("... add enabled", true));
+	}
 public:
-	using znode_t::znode_t;
-	//! shortcut, since voice0 is popular
-	zyn::voice0 voice0() {
-		return spawn<zyn::voice0>("voice0");
-	}
-	zyn::global global() {
-		return spawn<zyn::global>("global");
-	}
+	using nnode::nnode;
+	build<voice0> voice0 = ctor(this, "voice0");
+	build<global> global = ctor(this, "global");
 
-	void on_preinit() {
-		ins->add_const_command(command<bool>("... add enabled", true));
-	}
 };
 
-}
 
 template<class = void, bool = false>
 class use_no_port {};
@@ -144,7 +236,7 @@ struct _port_type_of<use_no_port, T> { using type = T; };
 template<template<class , bool> class P, class T>
 using port_type_of = typename _port_type_of<P, T>::type;
 
-class zyn_tree_t : public zyn::znode_t, public audio_instrument_t
+class zyn_tree_t : public nnode, public audio_instrument_t
 {
 	// todo: only send some params on new note?
 public:
@@ -255,49 +347,67 @@ public:
 	 *  ports
 	 */
 
-	zyn::adpars add0() {
+	//build<add0> add0; //= ctor(this, "voice0");
+
+
+	/*zyn::adpars add0() {
 		//return spawn<zyn::adpars>("part0/kit0/adpars");
 		return part0().kit0().adpars();
 	}
 
 	zyn::padpars pad0() {
 		return spawn<zyn::padpars>("part0/kit0/padpars");
-	}
+	}*/
+	// TODO: add0;
+
+	instrument_t* get_ins() { return this; }
+	class adpars : public nnode
+	{
+		void on_preinit() { // TODO
+	//		ins->add_const_command(command<bool>("... add enabled", true));
+		}
+	public:
+		using nnode::nnode;
+		build<voice0> voice0 = ctor(this, "voice0");
+		build<global> global = ctor(this, "global");
+
+	};
 
 	notes_t_port_t<zyn_tree_t>& note_input() {
 		return notes_t_port;
 	}
 
 
-	struct fx_t : public zyn::znode_t
+	struct fx_t : public nnode
 	{
-		using zyn::znode_t::znode_t;
 		template<class Port>
 		zyn::port<Port>& efftype() { // TODO: panning must be int...
 			return spawn<zyn::port<Port>>("efftype");
 		}
+		// TODO: for debugging features, efftype should be a node, too
 
 		// TODO: template is useless
 		template<class Port>
 		zyn::port<Port>& eff0_part_id() { // TODO: panning must be int...
-			return *new zyn::port<Port>(ins, "/", "Pinsparts0");
+			return *new zyn::port<Port>(get_ins(), "/", "Pinsparts0");
 			//return spawn_new<zyn::port<Port>>("efftype");
 		}
+		using nnode::nnode;
+		//build<voice0> voice0 = ctor(this, "voice0");
+		//build<global> global = ctor(this, "global");
 	};
 
-	class kit_t : public zyn::znode_t
+	class kit_t : public nnode
 	{
 	public:
-		using zyn::znode_t::znode_t;
-		zyn::adpars adpars() {
-			return spawn<zyn::adpars>("adpars");
-		}
+		using nnode::nnode;
+		build<adpars> adpars = ctor(this, "adpars");
 	};
 
-	class part_t : public zyn::znode_t
+	class part_t : public nnode
 	{
 	public:
-		using zyn::znode_t::znode_t;
+		using nnode::nnode;
 		//zyn::amp_env amp_env() const {
 		//	return spawn<zyn::amp_env>("AmpEnvelope/");
 		//}
@@ -306,14 +416,16 @@ public:
 			return spawn<zyn::port<Port>>("Ppanning");
 		}
 
-		template<std::size_t Id = 0>
+		/*template<std::size_t Id = 0>
 		fx_t partefx() { // TODO: panning must be int...
 			return spawn<fx_t, Id>("partefx");
 		}
 
 		kit_t kit0() {
 			return spawn<kit_t>("kit0");
-		}
+		}*/
+		build<fx_t> partefx = ctor(this, "partefx0");
+		build<kit0> kit0 = ctor(this, "kit0");
 
 	//	using T = fx_t (zyn_tree_t::*)(const std::string& ext) const;
 	//	const T partefx2 = &zyn_tree_t::spawn<fx_t, 0>;
@@ -322,18 +434,18 @@ public:
 		//using partefx2 = zyn_tree_t::spawn<fx_t, 0>; // TODO: instead, return struct which has operator()?
 	};
 
-	//void f(){
 
-	/*	(void)ptr;
-		//const T* const insefx2 = spawn<fx_t, 0>;
-	}*/
-	template<std::size_t Id = 0>
-	fx_t insefx() { return spawn<fx_t, Id>("insefx"); }
+	// TODO
+	//template<std::size_t Id>
+	//fx_t insefx0() { return spawn<fx_t, Id>("insefx"); }
 
 
-	template<std::size_t Id>
-	part_t part() { return spawn<part_t, Id>("part"); } // TODO: large tuple for these
-	part_t part0() { return part<0>(); }
+	//template<std::size_t Id>
+	//part_t part() { return spawn<part_t, Id>("part"); } // TODO: large tuple for these
+	//part_t part0() { return part<0>(); }
+
+	build<part_t> part0 = ctor(this, "part0");
+	build<fx_t> insefx0 = ctor(this, "insefx0");
 
 
 /*	// TODO???
@@ -345,13 +457,6 @@ public:
 	zyn::port<Port>& volume() {
 		return spawn<zyn::port<Port>>("volume");
 	}
-
-#ifdef NEW_PORT_TYPES
-	using insefx = z::insefx<zyn_tree_t>; // todo: automatic, via inheriting?
-	std::tuple<std::pair<cstr<'i', 'n', 's', 'e', 'f', 'x'>, insefx>> ports;
-#endif
-
-	// /insefx0/efftype:b , :i
 };
 
 class zynaddsubfx_t : public zyn_tree_t
