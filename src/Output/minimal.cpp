@@ -80,7 +80,7 @@ set_sample_rate(44100); // TODO!!
 	synth->alias();
 	middleware = new MiddleWare();
 	middleware->spawnMaster()->bank.rescanforbanks();
-	/*loadThread = new std::thread([this]() {
+/*	loadThread = new std::thread([this]() {
 		while(middleware) {
 		middleware->tick();
 		usleep(1000);
@@ -170,6 +170,64 @@ bool zynaddsubfx_t::advance() {
 	//assert(sample_rate);
 	run_synth(0, nullptr, 0ul);
 	return true;
+}
+
+zyn_tree_t::notes_t_port_t::notes_t_port_t(zyn_tree_t *parent,
+	const std::string &base, const std::string &ext) :
+	// todo: base, ext does not make sense here?
+	nnode(ext.c_str(), parent),
+	rtosc_in_port_t<notes_in>(*parent->get_ins()),
+	ins(parent->get_ins())
+{
+	note_ons.reserve(NOTES_MAX);
+	note_offs.reserve(NOTES_MAX);
+	for(std::size_t idx = 0; idx < NOTES_MAX; ++idx)
+	{
+		note_ons.emplace_back(ins, 0 /*chan*/, idx/*offs*/,
+			self_port_templ<int, true>{});
+		note_offs.emplace_back(ins, 0 /*chan*/, idx/*offs*/,
+			self_port_templ<int, true>{});
+	}
+
+	set_trigger(); // TODO: here?
+}
+
+void zyn_tree_t::notes_t_port_t::on_read(sample_no_t pos)
+{
+	io::mlog << "zyn notes port::on_read" << io::endl;
+	for(const std::pair<int, int>& rch : notes_in::data->recently_changed)
+	if(rch.first < 0)
+	 break;
+	else
+	{
+		// for self_port_t, on_read is not virtual, so we call it manually...
+		// -> TODO?? probably the above comment is deprecated
+		std::pair<int, int> p2 = notes_in::data->lines[rch.first][rch.second];
+
+		io::mlog << "first, second: " << p2.first << ", " << p2.second << io::endl;
+
+		if(p2.first >= 0) // i.e. note on
+		{
+			m_note_on_t& note_on_cmd = note_ons[rch.first];
+			// self_port_t must be completed manually:
+			note_on_cmd.cmd_ptr->port_at<2>().set(p2.second);
+			note_on_cmd.cmd_ptr->command::update();
+
+			note_on_cmd.cmd_ptr->complete_buffer(); // TODO: call in on_read??
+		}
+
+		auto& cmd_ref = (p2.first < 0)
+			? note_offs[rch.first].cmd
+			: note_ons[rch.first].cmd;
+
+		// TODO!!
+		// note_offs[p.first].on_read();
+		if(cmd_ref.set_changed())
+		{
+			cmd_ref.update_next_time(pos); // TODO: call on recv
+			ins->update(cmd_ref.get_handle());
+		}
+	}
 }
 
 }

@@ -82,7 +82,10 @@ private:
 protected: // TODO?
 	// TODO: call this the other way in the future?
 	virtual instrument_t* get_ins() {
-		return parent->get_ins();
+		if(parent)
+		 return parent->get_ins();
+		else
+		 throw "root class did not implement get_ins()";
 	}
 
 protected:
@@ -247,7 +250,7 @@ public:
 	{
 		using base = in_port_with_command<zyn_tree_t, port_type_of<Port1, int>, port_type_of<Port2, int>, port_type_of<Port3, int>>;
 	public:
-		note_on(zyn_tree_t* zyn, port_type_of<Port1, int> chan, port_type_of<Port2, int> note, port_type_of<Port3, int>&& velocity) // TODO: rvals
+		note_on(instrument_t* zyn, port_type_of<Port1, int> chan, port_type_of<Port2, int> note, port_type_of<Port3, int>&& velocity) // TODO: rvals
 			: base(zyn, "/", "noteOn", chan, note, std::forward<port_type_of<Port3, int>>(velocity)) // TODO: forward instead of move?
 		{
 		}
@@ -260,7 +263,7 @@ public:
 	{
 		using base = in_port_with_command<zyn_tree_t, port_type_of<Port1, int>, port_type_of<Port2, int>, port_type_of<Port3, int>>;
 	public:
-		note_off(zyn_tree_t* zyn, port_type_of<Port1, int> chan, port_type_of<Port2, int> note, port_type_of<Port3, int>&& id)
+		note_off(instrument_t* zyn, port_type_of<Port1, int> chan, port_type_of<Port2, int> note, port_type_of<Port3, int>&& id)
 			: base(zyn, "/", "noteOff", chan, note, std::forward<port_type_of<Port3, int>>(id))
 		{
 		}
@@ -269,73 +272,22 @@ private:
 	using c_note_on = note_on<use_no_port, use_no_port, self_port_templ>;
 	using c_note_off = note_off<use_no_port, use_no_port, self_port_templ>;
 
-	template<class InstClass>
-	struct notes_t_port_t : node_t<InstClass>, rtosc_in_port_t<notes_in>
+	struct notes_t_port_t : nnode, rtosc_in_port_t<notes_in>
 	{
 		command_base* cmd;
-		InstClass* ins;
+		instrument_t* ins; // TODO: remove this?
 		using m_note_on_t = note_on<use_no_port, use_no_port, self_port_templ>;
 		using m_note_off_t = note_off<use_no_port, use_no_port, self_port_templ>;
 
 		std::vector<m_note_on_t> note_ons;
 		std::vector<m_note_off_t> note_offs;
 	public:
-		notes_t_port_t(InstClass* ins, const std::string& base, const std::string& ext) : // todo: base, ext does not make sense here?
-			node_t<InstClass>(ins, base, ext),
-			rtosc_in_port_t<notes_in>(*ins),
-			ins(ins)
-		{
-			note_ons.reserve(NOTES_MAX);
-			note_offs.reserve(NOTES_MAX);
-			for(std::size_t idx = 0; idx < NOTES_MAX; ++idx)
-			{
-				note_ons.emplace_back(ins, 0 /*chan*/, idx/*offs*/, self_port_templ<int, true>{});
-				note_offs.emplace_back(ins, 0 /*chan*/, idx/*offs*/, self_port_templ<int, true>{});
-			}
+		notes_t_port_t(class zyn_tree_t* parent, const std::string& base, const std::string& ext);
 
-			set_trigger(); // TODO: here?
-		}
-
-		void on_read(sample_no_t pos)
-		{
-			io::mlog << "zyn notes port::on_read" << io::endl;
-			for(const std::pair<int, int>& rch : notes_in::data->recently_changed)
-			if(rch.first < 0)
-			 break;
-			else
-			{
-				// for self_port_t, on_read is not virtual, so we call it manually...
-				// -> TODO?? probably the above comment is deprecated
-				std::pair<int, int> p2 = notes_in::data->lines[rch.first][rch.second];
-				
-				io::mlog << "first, second: " << p2.first << ", " << p2.second << io::endl;
-				
-				if(p2.first >= 0) // i.e. note on
-				{
-					m_note_on_t& note_on_cmd = note_ons[rch.first];
-					// self_port_t must be completed manually:
-					note_on_cmd.cmd_ptr->port_at<2>().set(p2.second);
-					note_on_cmd.cmd_ptr->command::update();
-
-					note_on_cmd.cmd_ptr->complete_buffer(); // TODO: call in on_read??
-				}
-
-				auto& cmd_ref = (p2.first < 0)
-					? note_offs[rch.first].cmd
-					: note_ons[rch.first].cmd;
-
-				// TODO!!
-					// note_offs[p.first].on_read();
-				if(cmd_ref.set_changed())
-				{
-					cmd_ref.update_next_time(pos); // TODO: call on recv
-					ins->update(cmd_ref.get_handle());
-				}
-			}
-		}
+		void on_read(sample_no_t pos);
 	};
 
-	notes_t_port_t<zyn_tree_t> notes_t_port; // TODO: inherit??
+	notes_t_port_t notes_t_port; // TODO: inherit??
 
 
 public:
@@ -360,8 +312,7 @@ public:
 	}*/
 	// TODO: add0;
 
-	instrument_t* get_ins() { return this; }
-	class adpars : public nnode
+	class pars_base : public nnode
 	{
 		void on_preinit() { // TODO
 	//		ins->add_const_command(command<bool>("... add enabled", true));
@@ -370,10 +321,12 @@ public:
 		using nnode::nnode;
 		build<voice0> voice0 = ctor(this, "voice0");
 		build<global> global = ctor(this, "global");
-
 	};
 
-	notes_t_port_t<zyn_tree_t>& note_input() {
+	class add_pars : public pars_base {};
+	class pad_pars : public pars_base {};
+
+	notes_t_port_t& note_input() {
 		return notes_t_port;
 	}
 
@@ -447,6 +400,7 @@ public:
 	build<part_t> part0 = ctor(this, "part0");
 	build<fx_t> insefx0 = ctor(this, "insefx0");
 
+	instrument_t* get_ins() { return this; }
 
 /*	// TODO???
 	using volume_ptr_t = zyn::port<int>*(*)();
