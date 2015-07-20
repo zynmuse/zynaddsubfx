@@ -47,7 +47,7 @@ namespace mini {
 zyn_tree_t::zyn_tree_t(const char *name) :
 	nnode("", nullptr),
 	audio_instrument_t(name),
-	notes_t_port(this, "", "noteOn")
+	notes_t_port(this)
 {
 }
 
@@ -172,20 +172,19 @@ bool zynaddsubfx_t::advance() {
 	return true;
 }
 
-zyn_tree_t::notes_t_port_t::notes_t_port_t(zyn_tree_t *parent,
-	const std::string &base, const std::string &ext) :
+zyn_tree_t::notes_t_port_t::notes_t_port_t(zyn_tree_t *parent) :
 	// todo: base, ext does not make sense here?
-	nnode(ext.c_str(), parent),
 	rtosc_in_port_t<notes_in>(*parent->get_ins()),
+	parent_ptr(parent),
 	ins(parent->get_ins())
 {
 	note_ons.reserve(NOTES_MAX);
 	note_offs.reserve(NOTES_MAX);
 	for(std::size_t idx = 0; idx < NOTES_MAX; ++idx)
 	{
-		note_ons.emplace_back(ins, 0 /*chan*/, idx/*offs*/,
+		note_ons.emplace_back(parent, ins, 0 /*chan*/, idx/*offs*/,
 			self_port_templ<int, true>{});
-		note_offs.emplace_back(ins, 0 /*chan*/, idx/*offs*/,
+		note_offs.emplace_back(parent, ins, 0 /*chan*/, idx/*offs*/,
 			self_port_templ<int, true>{});
 	}
 

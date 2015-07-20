@@ -57,6 +57,7 @@ using port = in_port_with_command<zyn_tree_t, PortT>;
 
 }
 
+//! arbitrary single pointer class
 template<class Access>
 class single_ptr
 {
@@ -73,79 +74,7 @@ public:
 	}
 };
 
-class nnode : public named_t
-{
-private:
-	void register_as_child(nnode* child) {
-		children.emplace(child, false);
-	}
-protected: // TODO?
-	// TODO: call this the other way in the future?
-	virtual instrument_t* get_ins() {
-		if(parent)
-		 return parent->get_ins();
-		else
-		 throw "root class did not implement get_ins()";
-	}
-
-protected:
-	std::map<nnode*, bool> children;
-	nnode* parent = nullptr;
-public:
-	struct ctor
-	{
-		class nnode* parent;
-		const char* name;
-		ctor(nnode* parent, const char* name) :
-			parent(parent),
-			name(name) {}
-	};
-
-	nnode(const char* ext, nnode* parent) :
-		named_t(ext), parent(parent) {
-		if(parent)
-		 parent->register_as_child(this);
-	}
-
-	void print_parent_chain() {
-		no_rt::mlog << name() << " -> " << std::endl;
-		if(parent)
-		 parent->print_parent_chain();
-		else
-		 no_rt::mlog << "(root)" << std::endl;
-	}
-
-	void print_tree(unsigned initial_depth = 0) {
-		for(unsigned i = 0; i < initial_depth; ++i)
-		 no_rt::mlog << "  ";
-
-		no_rt::mlog << "- " << name() << std::endl;
-		unsigned next_depth = initial_depth + 1;
-		for(const auto& pr : children)
-		 pr.first->print_tree(next_depth) ;
-	}
-
-
-	std::string full_path() const {
-		return parent
-			? parent->full_path() + "/" + name()
-			: /*"/" +*/ name(); // TODO: why does this work??
-	}
-
-	template<class PortT> PortT& add_if_new(const std::string& ext)
-	{
-		return *new PortT(get_ins(), full_path() + "/", ext);
-		//return static_cast<PortT&>(
-		//	*used_ch.emplace(ext, new NodeT(ins, name(), ext)).
-		//	first->second);
-	}
-
-	template<class PortT>
-	PortT& spawn(const std::string& ext) {
-		return add_if_new<PortT>(ext);
-	}
-};
-
+//! single_ptr class, especially for nnode children
 template<class NodeT, char... Ext>
 class build : single_ptr<NodeT>
 {
@@ -166,7 +95,7 @@ public:
 	}
 };
 
-struct kit0 : nnode
+struct kit0_t : nnode
 {
 	using nnode::nnode;
 };
@@ -188,18 +117,18 @@ public:
 	}*/
 };
 
-class global : public nnode
+class global_t : public nnode
 {
 public:
 	using nnode::nnode;
 	/*amp_env_t amp_env() {
 		return spawn<amp_env_t>("AmpEnvelope");
 	}*/
-	build<amp_env_t> amp_env_t = ctor(this, "AmpEnvelope");
+	build<amp_env_t> amp_env = ctor(this, "AmpEnvelope");
 };
 
 
-class voice0 : public nnode
+class voice0_t : public nnode
 {
 public:
 	using nnode::nnode;
@@ -214,16 +143,35 @@ public:
 	using nnode::nnode;
 };
 
-class adpars : public nnode
+class adpars_t : public nnode
 {
 	void on_preinit() { // TODO
 //		ins->add_const_command(command<bool>("... add enabled", true));
 	}
 public:
 	using nnode::nnode;
-	build<voice0> voice0 = ctor(this, "voice0");
-	build<global> global = ctor(this, "global");
+	build<voice0_t> voice0 = ctor(this, "voice0");
+	build<global_t> global = ctor(this, "global");
 
+};
+
+template<class PortT>
+struct pram : public in_port_with_command<zyn_tree_t, PortT>
+{
+	pram(const char* ext, nnode* parent) : // : nnode(ext, parent),
+		// we can not virtually call get_ins() in the ctor,
+		// but we can call it from parent :P
+		in_port_with_command<zyn_tree_t, PortT>(parent, parent->get_ins(), ext)
+	{
+	//	spawn<zyn::port<PortT>>(ext);
+	}
+	/*operator PortT&() {
+		return spawn<zyn::port<PortT>>("");
+	}*/
+
+	/*PortT& operator()() {
+		return spawn<zyn::port<PortT>>("");
+	}*/
 };
 
 
@@ -250,8 +198,8 @@ public:
 	{
 		using base = in_port_with_command<zyn_tree_t, port_type_of<Port1, int>, port_type_of<Port2, int>, port_type_of<Port3, int>>;
 	public:
-		note_on(instrument_t* zyn, port_type_of<Port1, int> chan, port_type_of<Port2, int> note, port_type_of<Port3, int>&& velocity) // TODO: rvals
-			: base(zyn, "/", "noteOn", chan, note, std::forward<port_type_of<Port3, int>>(velocity)) // TODO: forward instead of move?
+		note_on(nnode* parent, instrument_t* zyn, port_type_of<Port1, int> chan, port_type_of<Port2, int> note, port_type_of<Port3, int>&& velocity) // TODO: rvals
+			: base(parent, zyn, "noteOn", chan, note, std::forward<port_type_of<Port3, int>>(velocity)) // TODO: forward instead of move?
 		{
 		}
 	};
@@ -263,8 +211,8 @@ public:
 	{
 		using base = in_port_with_command<zyn_tree_t, port_type_of<Port1, int>, port_type_of<Port2, int>, port_type_of<Port3, int>>;
 	public:
-		note_off(instrument_t* zyn, port_type_of<Port1, int> chan, port_type_of<Port2, int> note, port_type_of<Port3, int>&& id)
-			: base(zyn, "/", "noteOff", chan, note, std::forward<port_type_of<Port3, int>>(id))
+		note_off(nnode* parent, instrument_t* zyn, port_type_of<Port1, int> chan, port_type_of<Port2, int> note, port_type_of<Port3, int>&& id)
+			: base(parent, zyn, "noteOff", chan, note, std::forward<port_type_of<Port3, int>>(id))
 		{
 		}
 	};
@@ -272,8 +220,9 @@ private:
 	using c_note_on = note_on<use_no_port, use_no_port, self_port_templ>;
 	using c_note_off = note_off<use_no_port, use_no_port, self_port_templ>;
 
-	struct notes_t_port_t : nnode, rtosc_in_port_t<notes_in>
+	struct notes_t_port_t : rtosc_in_port_t<notes_in>
 	{
+		zyn_tree_t* parent_ptr;
 		command_base* cmd;
 		instrument_t* ins; // TODO: remove this?
 		using m_note_on_t = note_on<use_no_port, use_no_port, self_port_templ>;
@@ -282,7 +231,7 @@ private:
 		std::vector<m_note_on_t> note_ons;
 		std::vector<m_note_off_t> note_offs;
 	public:
-		notes_t_port_t(class zyn_tree_t* parent, const std::string& base, const std::string& ext);
+		notes_t_port_t(class zyn_tree_t* parent);
 
 		void on_read(sample_no_t pos);
 	};
@@ -319,8 +268,8 @@ public:
 		}
 	public:
 		using nnode::nnode;
-		build<voice0> voice0 = ctor(this, "voice0");
-		build<global> global = ctor(this, "global");
+		build<voice0_t> voice0 = ctor(this, "voice0");
+		build<global_t> global = ctor(this, "global");
 	};
 
 	class add_pars : public pars_base {};
@@ -333,28 +282,38 @@ public:
 
 	struct fx_t : public nnode
 	{
-		template<class Port>
+		/*template<class Port>
 		zyn::port<Port>& efftype() { // TODO: panning must be int...
 			return spawn<zyn::port<Port>>("efftype");
-		}
+		}*/
+
+		build<pram<in_port_templ<int>>> efftype = ctor(this, "efftype");
+
 		// TODO: for debugging features, efftype should be a node, too
 
 		// TODO: template is useless
-		template<class Port>
+/*		template<class Port>
 		zyn::port<Port>& eff0_part_id() { // TODO: panning must be int...
-			return *new zyn::port<Port>(get_ins(), "/", "Pinsparts0");
+			return *new zyn::port<Port>(this, get_ins(), "/", "efftype");
 			//return spawn_new<zyn::port<Port>>("efftype");
-		}
+		}*/
 		using nnode::nnode;
 		//build<voice0> voice0 = ctor(this, "voice0");
 		//build<global> global = ctor(this, "global");
 	};
 
+
+	template<class Port>
+	zyn::port<Port>& eff0_part_id() { // TODO: panning must be int...
+		return *new zyn::port<Port>(this, get_ins(), "/", "efftype");
+		//return spawn_new<zyn::port<Port>>("efftype");
+	}
+
 	class kit_t : public nnode
 	{
 	public:
 		using nnode::nnode;
-		build<adpars> adpars = ctor(this, "adpars");
+		build<adpars_t> adpars = ctor(this, "adpars");
 	};
 
 	class part_t : public nnode
@@ -378,7 +337,7 @@ public:
 			return spawn<kit_t>("kit0");
 		}*/
 		build<fx_t> partefx = ctor(this, "partefx0");
-		build<kit0> kit0 = ctor(this, "kit0");
+		build<kit0_t> kit0 = ctor(this, "kit0");
 
 	//	using T = fx_t (zyn_tree_t::*)(const std::string& ext) const;
 	//	const T partefx2 = &zyn_tree_t::spawn<fx_t, 0>;
@@ -407,10 +366,12 @@ public:
 	//spawn_new<zyn::port<Port>>;
 	volume_ptr_t volume = &spawn_new<zyn::port<int>>;
 */
-	template<class Port>
+	/*template<class Port>
 	zyn::port<Port>& volume() {
 		return spawn<zyn::port<Port>>("volume");
-	}
+	}*/
+
+	build<pram<in_port_templ<int>>> volume = ctor(this, "volume");
 };
 
 class zynaddsubfx_t : public zyn_tree_t
