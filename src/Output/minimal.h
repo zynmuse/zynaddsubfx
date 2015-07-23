@@ -53,7 +53,7 @@ class zyn_tree_t;
 namespace zyn {
 
 template<class PortT>
-using port = in_port_with_command<zyn_tree_t, PortT>;
+using port = in_port_with_command<PortT>;
 
 }
 
@@ -156,12 +156,12 @@ public:
 };
 
 template<class PortT>
-struct pram : public in_port_with_command<zyn_tree_t, PortT>
+struct pram : public in_port_with_command<PortT>
 {
 	pram(const char* ext, nnode* parent) : // : nnode(ext, parent),
 		// we can not virtually call get_ins() in the ctor,
 		// but we can call it from parent :P
-		in_port_with_command<zyn_tree_t, PortT>(parent, parent->get_ins(), ext)
+		in_port_with_command<PortT>(parent, parent->get_ins(), ext)
 	{
 	//	spawn<zyn::port<PortT>>(ext);
 	}
@@ -194,9 +194,9 @@ public:
 	template<template<class , bool> class Port1 = use_no_port,
 		template<class , bool> class Port2 = use_no_port,
 		template<class , bool> class Port3 = use_no_port>
-	class note_on : public in_port_with_command<zyn_tree_t, port_type_of<Port1, int>, port_type_of<Port2, int>, port_type_of<Port3, int>>
+	class note_on : public in_port_with_command<port_type_of<Port1, int>, port_type_of<Port2, int>, port_type_of<Port3, int>>
 	{
-		using base = in_port_with_command<zyn_tree_t, port_type_of<Port1, int>, port_type_of<Port2, int>, port_type_of<Port3, int>>;
+		using base = in_port_with_command<port_type_of<Port1, int>, port_type_of<Port2, int>, port_type_of<Port3, int>>;
 	public:
 		note_on(nnode* parent, instrument_t* zyn, port_type_of<Port1, int> chan, port_type_of<Port2, int> note, port_type_of<Port3, int>&& velocity) // TODO: rvals
 			: base(parent, zyn, "noteOn", chan, note, std::forward<port_type_of<Port3, int>>(velocity)) // TODO: forward instead of move?
@@ -207,9 +207,9 @@ public:
 	template<template<class , bool> class Port1 = use_no_port,
 		template<class , bool> class Port2 = use_no_port,
 		template<class , bool> class Port3 = use_no_port>
-	class note_off : public in_port_with_command<zyn_tree_t, port_type_of<Port1, int>, port_type_of<Port2, int>, port_type_of<Port3, int>>
+	class note_off : public in_port_with_command<port_type_of<Port1, int>, port_type_of<Port2, int>, port_type_of<Port3, int>>
 	{
-		using base = in_port_with_command<zyn_tree_t, port_type_of<Port1, int>, port_type_of<Port2, int>, port_type_of<Port3, int>>;
+		using base = in_port_with_command<port_type_of<Port1, int>, port_type_of<Port2, int>, port_type_of<Port3, int>>;
 	public:
 		note_off(nnode* parent, instrument_t* zyn, port_type_of<Port1, int> chan, port_type_of<Port2, int> note, port_type_of<Port3, int>&& id)
 			: base(parent, zyn, "noteOff", chan, note, std::forward<port_type_of<Port3, int>>(id))
