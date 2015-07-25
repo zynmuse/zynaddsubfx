@@ -129,28 +129,6 @@ void zynaddsubfx_t::run_synth(unsigned long ,
      // TODO: not sure about this value:
     set_next_time(time() + synth->buffersize);
     
-    
-#if 0
-        // Now process any event(s) at the current timing point
-        while(events != NULL && event_index < event_count
-              && events[event_index].time.tick == to_frame) {
-            if(events[event_index].type == SND_SEQ_EVENT_NOTEON)
-                master->noteOn(events[event_index].data.note.channel,
-                               events[event_index].data.note.note,
-                               events[event_index].data.note.velocity);
-            else
-            if(events[event_index].type == SND_SEQ_EVENT_NOTEOFF)
-                master->noteOff(events[event_index].data.note.channel,
-                                events[event_index].data.note.note);
-            else
-            if(events[event_index].type == SND_SEQ_EVENT_CONTROLLER)
-                master->setController(events[event_index].data.control.channel,
-                                      events[event_index].data.control.param,
-                                      events[event_index].data.control.value);
-            else {}
-            event_index++;
-        }
-#endif
 }
 
 void zynaddsubfx_t::send_osc_cmd(const char * msg)
@@ -158,13 +136,8 @@ void zynaddsubfx_t::send_osc_cmd(const char * msg)
     middleware->transmitMsg(msg);
 }
 
-/*mini::instrument_t *instantiate(unsigned long sample_rate)
-{
-	return new zynaddsubfx_t(sample_rate);
-	//return const_cast<char*>("abcdefghhhhhhhhhhhhhhhhhhhhh");
-}*/
-
-void zynaddsubfx_t::set_sample_rate(sample_rate_t srate) { zynaddsubfx_t::sample_rate = srate; }
+void zynaddsubfx_t::set_sample_rate(sample_rate_t srate) {
+	zynaddsubfx_t::sample_rate = srate; }
 
 bool zynaddsubfx_t::advance() {
 	//assert(sample_rate);

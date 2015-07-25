@@ -23,22 +23,16 @@
 #ifndef MINIMAL_H
 #define MINIMAL_H
 
-class MiddleWare;
-struct SYNTH_T;
-
-// TODO: include own header
-// #include <iostream> // TODO!!
-#include <map>
-
 #include <vector>
 #include "minimal/sample.h"
 #include "minimal/audio_instrument.h" // TODO: separate audio_instrument_t ?
 #include "minimal/command_tools.h"
 #include "minimal/mports.h"
 //#include "impl.h" // currently unused
-#include "minimal/io.h"
+//#include "minimal/io.h"
 
-#include "minimal_external.h"
+class MiddleWare;
+struct SYNTH_T;
 
 namespace std
 {
@@ -121,9 +115,6 @@ class global_t : public nnode
 {
 public:
 	using nnode::nnode;
-	/*amp_env_t amp_env() {
-		return spawn<amp_env_t>("AmpEnvelope");
-	}*/
 	build<amp_env_t> amp_env = ctor(this, "AmpEnvelope");
 };
 
@@ -328,15 +319,7 @@ public:
 			return spawn<zyn::port<Port>>("Ppanning");
 		}
 
-		/*template<std::size_t Id = 0>
-		fx_t partefx() { // TODO: panning must be int...
-			return spawn<fx_t, Id>("partefx");
-		}
-
-		kit_t kit0() {
-			return spawn<kit_t>("kit0");
-		}*/
-		build<fx_t> partefx = ctor(this, "partefx0");
+		build<fx_t> partefx = ctor(this, "partefx0"); // TODO: id, maybe as template?
 		build<kit0_t> kit0 = ctor(this, "kit0");
 
 	//	using T = fx_t (zyn_tree_t::*)(const std::string& ext) const;
@@ -366,11 +349,6 @@ public:
 	//spawn_new<zyn::port<Port>>;
 	volume_ptr_t volume = &spawn_new<zyn::port<int>>;
 */
-	/*template<class Port>
-	zyn::port<Port>& volume() {
-		return spawn<zyn::port<Port>>("volume");
-	}*/
-
 	build<pram<in_port_templ<int>>> volume = ctor(this, "volume");
 };
 
@@ -379,8 +357,8 @@ class zynaddsubfx_t : public zyn_tree_t
 	sample_no_t samples_played = 0;
 
 	// globals are annoying. we can not use them in this class
-	//MiddleWare *middleware;
-	//SYNTH_T *synth;
+	// MiddleWare *middleware;
+	// SYNTH_T *synth;
 	
 	std::string make_start_command() const { return "/TODO"; }
 	command_base* make_close_command() const;
