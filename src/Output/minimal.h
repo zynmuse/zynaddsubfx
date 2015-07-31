@@ -23,23 +23,15 @@
 #ifndef MINIMAL_H
 #define MINIMAL_H
 
-class MiddleWare;
-struct SYNTH_T;
-
-// TODO: include own header
-// #include <iostream> // TODO!!
-#include <map>
-
 #include <vector>
 #include "minimal/sample.h"
 #include "minimal/audio_instrument.h" // TODO: separate audio_instrument_t ?
 #include "minimal/command_tools.h"
 #include "minimal/mports.h"
-//#include "impl.h" // currently unused
-//#include "minimal/io.h"
 #include "minimal/notes.h"
 
-#include "minimal_external.h"
+class MiddleWare;
+struct SYNTH_T;
 
 namespace std
 {
@@ -54,7 +46,7 @@ class zyn_tree_t;
 namespace zyn {
 
 template<class PortT>
-using port = in_port_with_command<zyn_tree_t, PortT>;
+using port = in_port_with_command<PortT>;
 
 }
 
@@ -122,9 +114,6 @@ class global_t : public nnode
 {
 public:
 	using nnode::nnode;
-	/*amp_env_t amp_env() {
-		return spawn<amp_env_t>("AmpEnvelope");
-	}*/
 	build<amp_env_t> amp_env = ctor(this, "AmpEnvelope");
 };
 
@@ -157,12 +146,12 @@ public:
 };
 
 template<class PortT>
-struct pram : public in_port_with_command<zyn_tree_t, PortT>
+struct pram : public in_port_with_command<PortT>
 {
 	pram(const char* ext, nnode* parent) : // : nnode(ext, parent),
 		// we can not virtually call get_ins() in the ctor,
 		// but we can call it from parent :P
-		in_port_with_command<zyn_tree_t, PortT>(parent, parent->get_ins(), ext)
+		in_port_with_command<PortT>(parent, parent->get_ins(), ext)
 	{
 	//	spawn<zyn::port<PortT>>(ext);
 	}
@@ -195,9 +184,9 @@ public:
 	template<template<class , bool> class Port1 = use_no_port,
 		template<class , bool> class Port2 = use_no_port,
 		template<class , bool> class Port3 = use_no_port>
-	class note_on : public in_port_with_command<zyn_tree_t, port_type_of<Port1, int>, port_type_of<Port2, int>, port_type_of<Port3, int>>
+	class note_on : public in_port_with_command<port_type_of<Port1, int>, port_type_of<Port2, int>, port_type_of<Port3, int>>
 	{
-		using base = in_port_with_command<zyn_tree_t, port_type_of<Port1, int>, port_type_of<Port2, int>, port_type_of<Port3, int>>;
+		using base = in_port_with_command<port_type_of<Port1, int>, port_type_of<Port2, int>, port_type_of<Port3, int>>;
 	public:
 		note_on(nnode* parent, instrument_t* zyn, port_type_of<Port1, int> chan, port_type_of<Port2, int> note, port_type_of<Port3, int>&& velocity) // TODO: rvals
 			: base(parent, zyn, "noteOn", chan, note, std::forward<port_type_of<Port3, int>>(velocity)) // TODO: forward instead of move?
@@ -208,9 +197,9 @@ public:
 	template<template<class , bool> class Port1 = use_no_port,
 		template<class , bool> class Port2 = use_no_port,
 		template<class , bool> class Port3 = use_no_port>
-	class note_off : public in_port_with_command<zyn_tree_t, port_type_of<Port1, int>, port_type_of<Port2, int>, port_type_of<Port3, int>>
+	class note_off : public in_port_with_command<port_type_of<Port1, int>, port_type_of<Port2, int>, port_type_of<Port3, int>>
 	{
-		using base = in_port_with_command<zyn_tree_t, port_type_of<Port1, int>, port_type_of<Port2, int>, port_type_of<Port3, int>>;
+		using base = in_port_with_command<port_type_of<Port1, int>, port_type_of<Port2, int>, port_type_of<Port3, int>>;
 	public:
 		note_off(nnode* parent, instrument_t* zyn, port_type_of<Port1, int> chan, port_type_of<Port2, int> note, port_type_of<Port3, int>&& id)
 			: base(parent, zyn, "noteOff", chan, note, std::forward<port_type_of<Port3, int>>(id))
@@ -329,15 +318,7 @@ public:
 			return spawn<zyn::port<Port>>("Ppanning");
 		}
 
-		/*template<std::size_t Id = 0>
-		fx_t partefx() { // TODO: panning must be int...
-			return spawn<fx_t, Id>("partefx");
-		}
-
-		kit_t kit0() {
-			return spawn<kit_t>("kit0");
-		}*/
-		build<fx_t> partefx = ctor(this, "partefx0");
+		build<fx_t> partefx = ctor(this, "partefx0"); // TODO: id, maybe as template?
 		build<kit0_t> kit0 = ctor(this, "kit0");
 
 	//	using T = fx_t (zyn_tree_t::*)(const std::string& ext) const;
@@ -367,11 +348,6 @@ public:
 	//spawn_new<zyn::port<Port>>;
 	volume_ptr_t volume = &spawn_new<zyn::port<int>>;
 */
-	/*template<class Port>
-	zyn::port<Port>& volume() {
-		return spawn<zyn::port<Port>>("volume");
-	}*/
-
 	build<pram<in_port_templ<int>>> volume = ctor(this, "volume");
 };
 
@@ -380,8 +356,8 @@ class zynaddsubfx_t : public zyn_tree_t
 	sample_no_t samples_played = 0;
 
 	// globals are annoying. we can not use them in this class
-	//MiddleWare *middleware;
-	//SYNTH_T *synth;
+	// MiddleWare *middleware;
+	// SYNTH_T *synth;
 	
 	std::string make_start_command() const { return "/TODO"; }
 	command_base* make_close_command() const;
