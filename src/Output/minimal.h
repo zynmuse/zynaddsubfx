@@ -36,7 +36,8 @@ struct SYNTH_T;
 #include "minimal/command_tools.h"
 #include "minimal/mports.h"
 //#include "impl.h" // currently unused
-#include "minimal/io.h"
+//#include "minimal/io.h"
+#include "minimal/notes.h"
 
 #include "minimal_external.h"
 

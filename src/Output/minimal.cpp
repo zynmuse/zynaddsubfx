@@ -201,7 +201,7 @@ void zyn_tree_t::notes_t_port_t::on_read(sample_no_t pos)
 	{
 		// for self_port_t, on_read is not virtual, so we call it manually...
 		// -> TODO?? probably the above comment is deprecated
-		std::pair<int, int> p2 = notes_in::data->lines[rch.first][rch.second];
+		std::pair<int, music_note_properties> p2 = notes_in::data->lines[rch.first][rch.second];
 
 		io::mlog << "first, second: " << p2.first << ", " << p2.second << io::endl;
 
