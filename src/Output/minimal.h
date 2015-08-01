@@ -210,7 +210,7 @@ private:
 	using c_note_on = note_on<use_no_port, use_no_port, self_port_templ>;
 	using c_note_off = note_off<use_no_port, use_no_port, self_port_templ>;
 
-	struct notes_t_port_t : rtosc_in_port_t<notes_in>
+	struct events_t_port_t : rtosc_in_port_t<notes_in>
 	{
 		zyn_tree_t* parent_ptr;
 		command_base* cmd;
@@ -221,12 +221,12 @@ private:
 		std::vector<m_note_on_t> note_ons;
 		std::vector<m_note_off_t> note_offs;
 	public:
-		notes_t_port_t(class zyn_tree_t* parent);
+		events_t_port_t(class zyn_tree_t* parent);
 
 		void on_read(sample_no_t pos);
 	};
 
-	notes_t_port_t notes_t_port; // TODO: inherit??
+	events_t_port_t events_t_port; // TODO: inherit??
 
 
 public:
@@ -265,8 +265,8 @@ public:
 	class add_pars : public pars_base {};
 	class pad_pars : public pars_base {};
 
-	notes_t_port_t& note_input() {
-		return notes_t_port;
+	events_t_port_t& note_input() {
+		return events_t_port;
 	}
 
 

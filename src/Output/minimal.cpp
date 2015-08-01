@@ -47,7 +47,7 @@ namespace mini {
 zyn_tree_t::zyn_tree_t(const char *name) :
 	nnode("", nullptr),
 	audio_instrument_t(name),
-	notes_t_port(this)
+	events_t_port(this)
 {
 }
 
@@ -145,7 +145,7 @@ bool zynaddsubfx_t::advance() {
 	return true;
 }
 
-zyn_tree_t::notes_t_port_t::notes_t_port_t(zyn_tree_t *parent) :
+zyn_tree_t::events_t_port_t::events_t_port_t(zyn_tree_t *parent) :
 	// todo: base, ext does not make sense here?
 	rtosc_in_port_t<notes_in>(*parent->get_ins()),
 	parent_ptr(parent),
@@ -164,7 +164,7 @@ zyn_tree_t::notes_t_port_t::notes_t_port_t(zyn_tree_t *parent) :
 	set_trigger(); // TODO: here?
 }
 
-void zyn_tree_t::notes_t_port_t::on_read(sample_no_t pos)
+void zyn_tree_t::events_t_port_t::on_read(sample_no_t pos)
 {
 	io::mlog << "zyn notes port::on_read" << io::endl;
 	for(const std::pair<int, int>& rch : notes_in::data->recently_changed)
@@ -182,7 +182,7 @@ void zyn_tree_t::notes_t_port_t::on_read(sample_no_t pos)
 		{
 			m_note_on_t& note_on_cmd = note_ons[rch.first];
 			// self_port_t must be completed manually:
-			note_on_cmd.cmd_ptr->port_at<2>().set(p2.second);
+			note_on_cmd.cmd_ptr->port_at<2>().set(p2.second.velocity());
 			note_on_cmd.cmd_ptr->command::update();
 
 			note_on_cmd.cmd_ptr->complete_buffer(); // TODO: call in on_read??
