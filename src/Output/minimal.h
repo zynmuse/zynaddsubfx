@@ -67,26 +67,76 @@ public:
 	}
 };
 
-//! single_ptr class, especially for nnode children
-template<class NodeT, char... Ext>
-class build : single_ptr<NodeT>
+template<class Access, std::size_t Size>
+class single_ptr_array
+{
+	std::vector<single_ptr<Access>> acc;
+public:
+	template<class ...Args>
+	Access* get(std::size_t idx, Args... args) {
+		if(acc.empty())
+		 acc.resize(Size);
+		return acc[idx].get(args...);
+	}
+};
+
+class build_base
 {
 protected:
 	nnode* parent = nullptr;
 	const char* name = "/";
 public:
-	//nnode_builder(nnode* parent) : parent(parent) {}
-	build() = default;
+	build_base() = default;
 
-	build(const nnode::ctor& ctor) :
+	build_base(const nnode::ctor& ctor) :
 		parent(ctor.parent),
 		name(ctor.name)
 		{}
+};
+
+template<class NodeT>
+class build : single_ptr<NodeT>, public build_base
+{
+public:
+	using build_base::build_base;
 
 	NodeT* operator->() {
 		return single_ptr<NodeT>::get(name, parent);
 	}
 };
+
+template<class NodeT, std::size_t Size>
+class build_multi : single_ptr_array<NodeT, Size>, public build_base
+{
+public:
+	using build_base::build_base;
+
+	NodeT& operator[](std::size_t idx) {
+		return *single_ptr_array<NodeT, Size>::get(idx, name, parent);
+	}
+};
+
+template<class PortT>
+struct pram : public in_port_with_command<PortT>
+{
+	pram(const char* ext, nnode* parent) : // : nnode(ext, parent),
+		// we can not virtually call get_ins() in the ctor,
+		// but we can call it from parent :P
+		in_port_with_command<PortT>(parent, parent->get_ins(), ext)
+	{
+	//	spawn<zyn::port<PortT>>(ext);
+	}
+	/*operator PortT&() {
+		return spawn<zyn::port<PortT>>("");
+	}*/
+
+	/*PortT& operator()() {
+		return spawn<zyn::port<PortT>>("");
+	}*/
+};
+
+template<class T>
+using build_inport = build<pram<in_port_templ<T>>>;
 
 struct kit0_t : nnode
 {
@@ -117,11 +167,18 @@ public:
 	build<amp_env_t> amp_env = ctor(this, "AmpEnvelope");
 };
 
+class oscil_smp : public nnode
+{
+	using nnode::nnode;
+};
 
 class voice0_t : public nnode
 {
 public:
 	using nnode::nnode;
+	build<oscil_smp> oscil = ctor(this, "OscilSmp");
+	build_inport<int> volume = ctor(this, "PVolume");
+	build_inport<int> panning = ctor(this, "PPanning");
 };
 
 class padpars : public nnode
@@ -144,26 +201,6 @@ public:
 	build<global_t> global = ctor(this, "global");
 
 };
-
-template<class PortT>
-struct pram : public in_port_with_command<PortT>
-{
-	pram(const char* ext, nnode* parent) : // : nnode(ext, parent),
-		// we can not virtually call get_ins() in the ctor,
-		// but we can call it from parent :P
-		in_port_with_command<PortT>(parent, parent->get_ins(), ext)
-	{
-	//	spawn<zyn::port<PortT>>(ext);
-	}
-	/*operator PortT&() {
-		return spawn<zyn::port<PortT>>("");
-	}*/
-
-	/*PortT& operator()() {
-		return spawn<zyn::port<PortT>>("");
-	}*/
-};
-
 
 template<class = void, bool = false>
 class use_no_port {};
@@ -277,7 +314,7 @@ public:
 			return spawn<zyn::port<Port>>("efftype");
 		}*/
 
-		build<pram<in_port_templ<int>>> efftype = ctor(this, "efftype");
+		build_inport<int> efftype = ctor(this, "efftype");
 
 		// TODO: for debugging features, efftype should be a node, too
 
@@ -313,10 +350,11 @@ public:
 		//zyn::amp_env amp_env() const {
 		//	return spawn<zyn::amp_env>("AmpEnvelope/");
 		//}
-		template<class Port>
+	/*	template<class Port>
 		zyn::port<Port>& Ppanning() { // TODO: panning must be int...
 			return spawn<zyn::port<Port>>("Ppanning");
-		}
+		}*/
+		build_inport<int> Ppanning = ctor(this, "Ppanning");
 
 		build<fx_t> partefx = ctor(this, "partefx0"); // TODO: id, maybe as template?
 		build<kit0_t> kit0 = ctor(this, "kit0");
@@ -338,17 +376,17 @@ public:
 	//part_t part() { return spawn<part_t, Id>("part"); } // TODO: large tuple for these
 	//part_t part0() { return part<0>(); }
 
-	build<part_t> part0 = ctor(this, "part0");
-	build<fx_t> insefx0 = ctor(this, "insefx0");
+	build_multi<part_t, 16> part = ctor(this, "part"); // TODO: 16? 8?
+	build_multi<fx_t, 3> insefx = ctor(this, "insefx"); // TODO? how many?
 
-	instrument_t* get_ins() { return this; }
+//	instrument_t* get_ins() { return this; }
 
 /*	// TODO???
 	using volume_ptr_t = zyn::port<int>*(*)();
 	//spawn_new<zyn::port<Port>>;
 	volume_ptr_t volume = &spawn_new<zyn::port<int>>;
 */
-	build<pram<in_port_templ<int>>> volume = ctor(this, "volume");
+	build_inport<int> volume = ctor(this, "volume");
 };
 
 class zynaddsubfx_t : public zyn_tree_t
