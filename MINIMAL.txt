@@ -1,0 +1,1 @@
+cmake -DCOMPILER=clang -DCMAKE_BUILD_TYPE=Debug -DMinimalDir=/home/johannes/cprogs/minimal/clang/install -DCMAKE_INSTALL_PREFIX=/home/johannes/cprogs/zyn-plugin/clang/install ..
