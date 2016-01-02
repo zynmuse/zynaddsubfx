@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cassert>
 #include <sstream>
+#include "../Misc/Util.h"
 
 static double min__(double a, double b)
 {
@@ -14,7 +15,8 @@ static double min__(double a, double b)
 }
 
 Fl_Osc_Slider::Fl_Osc_Slider(int X, int Y, int W, int H, const char *label)
-    :Fl_Slider(X,Y,W,H,label), Fl_Osc_Widget(this), cb_data(NULL, NULL)
+    :Fl_Slider(X,Y,W,H,label), Fl_Osc_Widget(this), reset_value(0),
+     cb_data(NULL, NULL), just_pushed(true)
 {
     //bounds(0.0f,1.0f);
     Fl_Slider::callback(Fl_Osc_Slider::_cb);
@@ -33,7 +35,7 @@ Fl_Osc_Slider::~Fl_Osc_Slider(void)
 void Fl_Osc_Slider::OSC_value(int v)
 {
     const float min_ = min__(minimum(), maximum());//flipped sliders
-    Fl_Slider::value(v+min_);
+    Fl_Slider::value(v+min_+value()-floorf(value()));
 }
 
 void Fl_Osc_Slider::OSC_value(float v)
@@ -45,7 +47,7 @@ void Fl_Osc_Slider::OSC_value(float v)
 void Fl_Osc_Slider::OSC_value(char v)
 {
     const float min_ = min__(minimum(), maximum());//flipped sliders
-    Fl_Slider::value(v+min_);
+    Fl_Slider::value(v+min_+value()-floorf(value()));
 }
 
 void Fl_Osc_Slider::cb(void)
@@ -72,10 +74,12 @@ void Fl_Osc_Slider::callback(Fl_Callback *cb, void *p)
     cb_data.second = p;
 }
 
-int Fl_Osc_Slider::handle(int ev)
+#define MOD_MASK (FL_CTRL | FL_SHIFT)
+
+int Fl_Osc_Slider::handle(int ev, int X, int Y, int W, int H)
 {
     bool middle_mouse = (ev == FL_PUSH && Fl::event_state(FL_BUTTON2) && !Fl::event_shift());
-    bool ctl_click    = (ev == FL_PUSH && Fl::event_state(FL_BUTTON1) && Fl::event_ctrl());
+    bool ctl_click    = (ev == FL_PUSH && Fl::event_state(FL_BUTTON3) && Fl::event_ctrl());
     bool shift_middle = (ev == FL_PUSH && Fl::event_state(FL_BUTTON2) && Fl::event_shift());
     if(middle_mouse || ctl_click) {
         printf("Trying to learn...\n");
@@ -85,7 +89,148 @@ int Fl_Osc_Slider::handle(int ev)
         osc->write("/unlearn", "s", (loc+ext).c_str());
         return 1;
     }
-    return Fl_Slider::handle(ev);
+
+    int handled;
+    float rounded;
+
+    const float range = maximum() - minimum();
+    const float absrange = (range > 0 ? range : -range)+1;
+    int old_mod_state;
+    const float normal_step = range / W;
+
+    switch (ev) {
+        case FL_PUSH:
+            just_pushed = true;
+            mod_state = Fl::event_state() & MOD_MASK;
+            slow_state = 0;
+            start_pos = horizontal() ? Fl::event_x() : Fl::event_y();
+            handled = mod_state ? 1 : Fl_Slider::handle(ev, X, Y, W, H);
+            break;
+        case FL_MOUSEWHEEL:
+            mod_state = Fl::event_state() & MOD_MASK;
+            if (Fl::event_buttons())
+                return 1;
+            if (this == Fl::belowmouse() && Fl::e_dy != 0) {
+                int step_ = 1, divisor = 16;
+
+                switch (mod_state) {
+                    case FL_SHIFT:
+                        if (absrange > divisor * 8)
+                            step_ = 8;
+                    case FL_SHIFT | FL_CTRL:
+                        break;
+                    case FL_CTRL:
+                        divisor = 128;
+                    default:
+                        step_ = absrange / divisor;
+                        if (step_ < 1)
+                            step_ = 1;
+                }
+                int dy = minimum() <=  maximum() ? -Fl::e_dy : Fl::e_dy;
+                // Flip sense for vertical sliders.
+                dy = this->horizontal() ? dy : -dy;
+                handle_drag(clamp(value() + step_ * dy));
+            }
+            return 1;
+        case FL_RELEASE:
+            handled = Fl_Slider::handle(ev, X, Y, W, H);
+            if (Fl::event_clicks() == 1) {
+                Fl::event_clicks(0);
+                value(reset_value);
+            } else {
+                rounded = floorf(value() + 0.5);
+                value(clamp(rounded));
+            }
+            value_damage();
+            do_callback();
+            break;
+        case FL_DRAG: {
+            old_mod_state = mod_state;
+            mod_state = Fl::event_state() & MOD_MASK;
+            if (slow_state == 0 && mod_state == 0) {
+                int delta = (horizontal() ? Fl::event_x() : Fl::event_y())
+                    - start_pos;
+                if (delta < -1 || delta > 1)
+                    Fl::event_clicks(0);
+                return Fl_Slider::handle(ev, X, Y, W, H);
+            }
+
+            if (mod_state != 0) {
+                slow_state = 1;
+            } else if (slow_state == 1)
+                slow_state = 2;
+
+            if (just_pushed || old_mod_state != mod_state) {
+                just_pushed = false;
+                old_value = value();
+                start_pos = horizontal() ? Fl::event_x() : Fl::event_y();
+                if (slow_state == 1) {
+                    denominator = 2.0;
+                    float step_ = step();
+                    if (step_ == 0) step_ = 1;
+
+                    if (absrange / W / step_ > 32)
+                        switch (mod_state) {
+                            case FL_CTRL:
+                                denominator = 0.15;
+                                break;
+                            case FL_SHIFT:
+                                denominator = 0.7;
+                                break;
+                            case MOD_MASK:
+                                denominator = 3.0;
+                                break;
+                        }
+                    else if (mod_state & FL_SHIFT)
+                        denominator = 5.0;
+
+                    if (range < 0)
+                        denominator *= -1;
+                }
+            }
+
+            int delta = (horizontal() ? Fl::event_x() : Fl::event_y())
+                - start_pos;
+            if (delta < -1 || delta > 1)
+                Fl::event_clicks(0);
+            float new_value;
+            if (slow_state == 1) {
+                new_value = old_value + delta / denominator;
+            } else {
+                new_value = old_value + delta * normal_step;
+            }
+            const float clamped_value = clamp(new_value);
+            rounded = floor(clamped_value + 0.5);
+            if (new_value != clamped_value) {
+                start_pos = horizontal() ? Fl::event_x() : Fl::event_y();
+                old_value = rounded;
+                if (slow_state == 2 &&
+                    ((horizontal() &&
+                      (Fl::event_x() < X || Fl::event_x() > X + W)) ||
+                     (!horizontal() &&
+                      (Fl::event_y() < Y || Fl::event_y() > Y + H))))
+                    slow_state = 0;
+            }
+            value(rounded);
+            value_damage();
+            do_callback();
+
+            handled = 1;
+            break;
+        }
+        default:
+            handled = Fl_Slider::handle(ev, X, Y, W, H);
+    }
+    
+    return handled;
+}
+
+int Fl_Osc_Slider::handle(int ev) {
+    return handle(ev,
+                  x()+Fl::box_dx(box()),
+                  y()+Fl::box_dy(box()),
+                  w()-Fl::box_dw(box()),
+                  h()-Fl::box_dh(box()));
 }
 
 void Fl_Osc_Slider::update(void)

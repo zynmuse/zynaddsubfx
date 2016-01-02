@@ -28,6 +28,7 @@
 #include <rtosc/miditable.h>
 #include <rtosc/ports.h>
 
+#include "Time.h"
 #include "Bank.h"
 #include "Recorder.h"
 
@@ -49,9 +50,11 @@ class Master
 {
     public:
         /** Constructor TODO make private*/
-        Master();
+        Master(const SYNTH_T &synth, class Config *config);
         /** Destructor*/
         ~Master();
+
+        char last_xmz[XMZ_PATH_MAX];
 
         void applyOscEvent(const char *event);
 
@@ -60,10 +63,9 @@ class Master
         int saveXML(const char *filename);
 
         /**This adds the parameters to the XML data*/
-        void add2XML(XMLwrapper *xml);
+        void add2XML(XMLwrapper& xml);
 
         void defaults();
-
 
         /**loads all settings from a XML file
          * @return 0 for ok or -1 if there is an error*/
@@ -76,13 +78,13 @@ class Master
         //This must be called prior-to/at-the-time-of RT insertion
         void initialize_rt(void) REALTIME;
 
-        void getfromXML(XMLwrapper *xml);
+        void getfromXML(XMLwrapper& xml);
 
-        /**get all data to a newly allocated array (used for VST)
+        /**get all data to a newly allocated array (used for plugin)
          * @return the datasize*/
         int getalldata(char **data) NONREALTIME;
-        /**put all data from the *data array to zynaddsubfx parameters (used for VST)*/
-        void putalldata(char *data, int size);
+        /**put all data from the *data array to zynaddsubfx parameters (used for plugin)*/
+        void putalldata(const char *data);
 
         //Midi IN
         void noteOn(char chan, char note, char velocity);
@@ -99,7 +101,8 @@ class Master
 
         /**Audio Output*/
         void AudioOut(float *outl, float *outr) REALTIME;
-        /**Audio Output (for callback mode). This allows the program to be controled by an external program*/
+        /**Audio Output (for callback mode).
+         * This allows the program to be controled by an external program*/
         void GetAudioOutSamples(size_t nsamples,
                                 unsigned samplerate,
                                 float *outl,
@@ -107,6 +110,9 @@ class Master
 
 
         void partonoff(int npart, int what);
+
+        //Set callback to run when master changes
+        void setMasterChangedCallback(void(*cb)(void*,Master*),void *ptr);
 
         /**parts \todo see if this can be made to be dynamic*/
         class Part * part[NUM_MIDI_PARTS];
@@ -143,6 +149,7 @@ class Master
         float vuoutpeakpart[NUM_MIDI_PARTS];
         unsigned char fakepeakpart[NUM_MIDI_PARTS]; //this is used to compute the "peak" when the part is disabled
 
+        AbsTime  time;
         Controller ctl;
         bool       swaplr; //if L and R are swapped
 
@@ -160,7 +167,7 @@ class Master
         //Statistics on output levels
         vuData vu;
 
-        rtosc::MidiTable midi;//<1024,64>
+        rtosc::MidiMapperRT midi;
 
         bool   frozenState;//read-only parameters for threadsafe actions
         Allocator *memory;
@@ -180,8 +187,8 @@ class Master
         printf("WARNING!!! !outs\n");
 
     //Fail when resampling rather than doing a poor job
-    if(synth->samplerate != samplerate) {
-        printf("darn it: %d vs %d\n", synth->samplerate, samplerate);
+    if(synth.samplerate != samplerate) {
+        printf("darn it: %d vs %d\n", synth.samplerate, samplerate);
         return;
     }
     
@@ -208,7 +215,7 @@ class Master
             AudioOut(bufl, bufr);
             off  = 0;
             out_off  += smps;
-            smps = synth->buffersize;
+            smps = synth.buffersize;
         }
         else {   //use some samples
         
@@ -221,6 +228,8 @@ class Master
     }
 }
         
+        const SYNTH_T &synth;
+        const int& gzip_compression; //!< value from config
     private:
         float  sysefxvol[NUM_SYS_EFX][NUM_MIDI_PARTS];
         float  sysefxsend[NUM_SYS_EFX][NUM_SYS_EFX];
@@ -231,6 +240,10 @@ class Master
         float *bufr;
         off_t  off;
         size_t smps;
+
+        //Callback When Master changes
+        void(*mastercb)(void*,Master*);
+        void* mastercb_ptr;
 };
 
 #endif

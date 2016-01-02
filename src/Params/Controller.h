@@ -24,23 +24,24 @@
 #ifndef CONTROLLER_H
 #define CONTROLLER_H
 
+#include <stdint.h>
 #include "../globals.h"
 
 /**(Midi) Controllers implementation*/
 class Controller
 {
     public:
-        Controller();
+        Controller(const SYNTH_T &synth, const AbsTime *time = nullptr);
+        Controller&operator=(const Controller &c);
         ~Controller();
         void resetall();
 
-        void add2XML(XMLwrapper *xml);
+        void add2XML(XMLwrapper& xml);
         void defaults();
-        void getfromXML(XMLwrapper *xml);
+        void getfromXML(XMLwrapper& xml);
 
         //Controllers functions
         void setpitchwheel(int value);
-        void setpitchwheelbendrange(unsigned short int value);
         void setexpression(int value);
         void setpanning(int value);
         void setfiltercutoff(int value);
@@ -73,8 +74,10 @@ class Controller
 
         // Controllers values
         struct { //Pitch Wheel
-            int data;
+            int       data;
+            bool      is_split; //Up and down bends may be different
             short int bendrange; //bendrange is in cents
+            short int bendrange_down;
             float     relfreq; //the relative frequency (default is 1.0f)
         } pitchwheel;
 
@@ -213,8 +216,13 @@ class Controller
             unsigned char receive; //this is saved to disk by Master
         } NRPN;
 
+
+        const AbsTime *time;
+        int64_t last_update_timestamp;
+
         static const rtosc::Ports ports;
     private:
+        const SYNTH_T &synth;
 };
 
 #endif

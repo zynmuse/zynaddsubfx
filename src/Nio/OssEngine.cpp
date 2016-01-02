@@ -22,6 +22,7 @@
 
 #include "OssEngine.h"
 #include "../Misc/Util.h"
+#include "../Misc/Config.h"
 #include "../globals.h"
 
 #include <cstring>
@@ -179,8 +180,11 @@ OssMidiParse(struct OssMidiParse &midi_parse,
         return (0);
 }
 
-OssEngine::OssEngine()
-    :AudioOut(), audioThread(NULL), midiThread(NULL)
+OssEngine::OssEngine(const SYNTH_T &synth,
+    const oss_devs_t& oss_devs)
+    :AudioOut(synth), audioThread(NULL), midiThread(NULL),
+    linux_oss_wave_out_dev(oss_devs.linux_wave_out),
+    linux_oss_seq_in_dev(oss_devs.linux_seq_in)
 {
     name = "OSS";
 
@@ -188,8 +192,8 @@ OssEngine::OssEngine()
     audio.handle = -1;
 
     /* allocate worst case audio buffer */
-    audio.smps.ps32 = new int[synth->buffersize * 2];
-    memset(audio.smps.ps32, 0, sizeof(int) * synth->buffersize * 2);
+    audio.smps.ps32 = new int[synth.buffersize * 2];
+    memset(audio.smps.ps32, 0, sizeof(int) * synth.buffersize * 2);
     memset(&midi.state, 0, sizeof(midi.state));
 }
 
@@ -208,11 +212,11 @@ bool OssEngine::openAudio()
 
     int snd_fragment;
     int snd_stereo     = 1; //stereo;
-    int snd_samplerate = synth->samplerate;
+    int snd_samplerate = synth.samplerate;
 
     const char *device = getenv("DSP_DEVICE");
     if(device == NULL)
-        device = config.cfg.LinuxOSSWaveOutDev;
+        device = linux_oss_wave_out_dev;
 
     /* NOTE: PIPEs and FIFOs can block when opening them */
     audio.handle = open(device, O_WRONLY, O_NONBLOCK);
@@ -243,15 +247,15 @@ bool OssEngine::openAudio()
     ioctl(audio.handle, SNDCTL_DSP_STEREO, &snd_stereo);
     ioctl(audio.handle, SNDCTL_DSP_SPEED, &snd_samplerate);
 
-    if (snd_samplerate != (int)synth->samplerate) {
+    if (snd_samplerate != (int)synth.samplerate) {
         cerr << "ERROR - Cannot set samplerate for "
              << device << ". " << snd_samplerate
-             << " != " << synth->samplerate << endl;
+             << " != " << synth.samplerate << endl;
         goto error;
     }
 
     /* compute buffer size for 16-bit stereo samples */
-    audio.buffersize = 4 * synth->buffersize;
+    audio.buffersize = 4 * synth.buffersize;
     if (audio.is32bit)
         audio.buffersize *= 2;
 
@@ -350,7 +354,7 @@ bool OssEngine::openMidi()
 
     const char *device = getenv("MIDI_DEVICE");
     if(device == NULL)
-        device = config.cfg.LinuxOSSSeqInDev;
+        device = linux_oss_seq_in_dev;
 
     /* NOTE: PIPEs and FIFOs can block when opening them */
     handle = open(device, O_RDONLY, O_NONBLOCK);
@@ -407,7 +411,7 @@ void *OssEngine::audioThreadCb()
         const Stereo<float *> smps = getNext();
 
         float l, r;
-        for(int i = 0; i < synth->buffersize; ++i) {
+        for(int i = 0; i < synth.buffersize; ++i) {
             l = smps.l[i];
             r = smps.r[i];
 

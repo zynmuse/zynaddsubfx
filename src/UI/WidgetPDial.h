@@ -3,6 +3,7 @@
 #ifndef WIDGETPDIAL_h
 #define WIDGETPDIAL_h
 #include <FL/Fl_Dial.H>
+#include "TipWin.h"
 
 
 class WidgetPDial:public Fl_Dial
@@ -14,12 +15,21 @@ class WidgetPDial:public Fl_Dial
         void draw();
         void pdialcolor(int r, int g, int b);
         void tooltip(const char *c);
+	void set_transform(float (*transformer)(float));
+        void set_rounding(unsigned int digits = 0);
+        float reset_value;
+    protected:
+        bool integer_step;
+        bool use_rounding;
     private:
         void getPos();
         void resetPos();
         double oldvalue;
+        int old_y;
         bool   pos;
         bool   textset;
         class TipWin * tipwin;
+        float (*transform)(float);
+        int mod_state;
 };
 #endif

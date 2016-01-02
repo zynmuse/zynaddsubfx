@@ -8,7 +8,7 @@
 #include <cassert>
 #include <sstream>
 
-static void callback_fn(Fl_Widget *w, void *)
+static void callback_fn_dial(Fl_Widget *w, void *)
 {
     ((Fl_Osc_Dial*)w)->cb();
 }
@@ -28,7 +28,7 @@ Fl_Osc_Dial::Fl_Osc_Dial(int X, int Y, int W, int H, const char *label)
     :WidgetPDial(X,Y,W,H, label), Fl_Osc_Widget(this), alt_style(false), dead(false)
 {
     bounds(0.0, 127.0f);
-    WidgetPDial::callback(callback_fn);
+    WidgetPDial::callback(callback_fn_dial);
 }
 
 
@@ -63,7 +63,7 @@ void Fl_Osc_Dial::callback(Fl_Callback *cb, void *p)
 int Fl_Osc_Dial::handle(int ev)
 {
     bool middle_mouse = (ev == FL_PUSH && Fl::event_state(FL_BUTTON2) && !Fl::event_shift());
-    bool ctl_click    = (ev == FL_PUSH && Fl::event_state(FL_BUTTON1) && Fl::event_ctrl());
+    bool ctl_click    = (ev == FL_PUSH && Fl::event_state(FL_BUTTON3) && Fl::event_ctrl());
     bool shift_middle = (ev == FL_PUSH && Fl::event_state(FL_BUTTON2) && Fl::event_shift());
     if(middle_mouse || ctl_click) {
         printf("Trying to learn...\n");
@@ -78,12 +78,14 @@ int Fl_Osc_Dial::handle(int ev)
 
 void Fl_Osc_Dial::OSC_value(int v)
 {
-    value(v+minimum());
+    value(v + value() - floorf(value()) +
+          (minimum() == 64 ? 0 : minimum()));
 }
 
 void Fl_Osc_Dial::OSC_value(char v)
 {
-    value(v+minimum());
+    value(v + value() - floorf(value()) +
+          minimum());
 }
 
 void Fl_Osc_Dial::update(void)
@@ -95,11 +97,10 @@ void Fl_Osc_Dial::cb(void)
 {
     assert(osc);
 
-/*    if((maximum()-minimum()) == 127 || (maximum()-minimum()) == 255) {
-	oscWrite(ext, "i", (int)(value()-minimum()));
-    }
-    else*/
+    if(64 != (int)minimum())
         oscWrite(ext, "i", (int)(value()-minimum()));
+    else
+        oscWrite(ext, "i", (int)(value()));
 
     if(cb_data.first)
         cb_data.first(this, cb_data.second);
@@ -109,6 +110,8 @@ void Fl_Osc_Dial::mark_dead(void)
 {
     dead = true;
 }
+
+#define VEL_PFX "VelocityScale"
 
 void Fl_Osc_Dial::rebase(std::string new_base)
 {
@@ -140,8 +143,12 @@ void Fl_Osc_Dial::rebase(std::string new_base)
     }
 
     std::string new_loc = new_base.substr(0, match_pos+1);
-    printf("Moving '%s' to\n", (loc+ext).c_str());
-    printf("       '%s'\n", (new_loc+ext).c_str());
+    if (!strncmp(ext.c_str(), VEL_PFX, sizeof(VEL_PFX)-1) &&
+        strstr(loc.c_str(), "/VoicePar"))
+        new_loc = new_loc + "PFilter";
+    // printf("Moving '%s' to\n", (loc+ext).c_str());
+    // printf("       '%s'\n", (new_loc+ext).c_str());
+    // printf("Ext: %s\n", ext.c_str());
     oscMove(loc+ext, new_loc+ext);
     loc = new_loc;
 }

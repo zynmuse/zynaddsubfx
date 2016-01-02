@@ -23,13 +23,25 @@
 #ifndef LFO_PARAMS_H
 #define LFO_PARAMS_H
 
+#include <Misc/Time.h>
+#include <rtosc/ports.h>
 #include "Presets.h"
+
 class XMLwrapper;
 
-class LFOParams
+#define LFO_SINE      0
+#define LFO_TRIANGLE  1
+#define LFO_SQUARE    2
+#define LFO_RAMPUP    3
+#define LFO_RAMPDOWN  4
+#define LFO_EXP_DOWN1 5
+#define LFO_EXP_DOWN2 6
+#define LFO_RANDOM    7
+
+class LFOParams:public Presets
 {
     public:
-        LFOParams();
+        LFOParams(const AbsTime* time_ = nullptr);
         LFOParams(char Pfreq_,
                   char Pintensity_,
                   char Pstartphase_,
@@ -37,13 +49,14 @@ class LFOParams
                   char Prandomness_,
                   char Pdelay_,
                   char Pcontinous,
-                  char fel_);
+                  char fel_,
+                  const AbsTime* time_ = nullptr);
         ~LFOParams();
 
-        void add2XML(XMLwrapper *xml);
+        void add2XML(XMLwrapper& xml);
         void defaults();
         /**Loads the LFO from the xml*/
-        void getfromXML(XMLwrapper *xml);
+        void getfromXML(XMLwrapper& xml);
         void paste(LFOParams &);
 
         /*  MIDI Parameters*/
@@ -58,10 +71,11 @@ class LFOParams
         unsigned char Pstretch; /**<how the LFO is "stretched" according the note frequency (64=no stretch)*/
 
         int fel; //what kind is the LFO (0 - frequency, 1 - amplitude, 2 - filter)
-        static int time; //is used by Pcontinous parameter
+
+        const AbsTime *time;
+        int64_t last_update_timestamp;
 
         static const rtosc::Ports &ports;
-
     private:
         /* Default parameters */
         unsigned char Dfreq;

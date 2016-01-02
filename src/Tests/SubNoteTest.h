@@ -29,6 +29,7 @@
 #include "../Misc/Master.h"
 #include "../Misc/Allocator.h"
 #include "../Misc/Util.h"
+#include "../Misc/XMLwrapper.h"
 #include "../Synth/SUBnote.h"
 #include "../Params/SUBnoteParameters.h"
 #include "../Params/Presets.h"
@@ -43,9 +44,10 @@ class SubNoteTest:public CxxTest::TestSuite
 
         SUBnote      *note;
         Master       *master;
+        AbsTime      *time;
         Controller   *controller;
         unsigned char testnote;
-        Allocator     memory;
+        Alloc         memory;
 
 
         float *outR, *outL;
@@ -54,6 +56,7 @@ class SubNoteTest:public CxxTest::TestSuite
             synth = new SYNTH_T;
             //First the sensible settings and variables that have to be set:
             synth->buffersize = 256;
+            time  = new AbsTime(*synth);
 
             outL = new float[synth->buffersize];
             for(int i = 0; i < synth->buffersize; ++i)
@@ -62,40 +65,28 @@ class SubNoteTest:public CxxTest::TestSuite
             for(int i = 0; i < synth->buffersize; ++i)
                 *(outR + i) = 0;
 
-            //next the bad global variables that for some reason have not been properly placed in some
-            //initialization routine, but rather exist as cryptic oneliners in main.cpp:
-            denormalkillbuf = new float[synth->buffersize];
-            for(int i = 0; i < synth->buffersize; ++i)
-                denormalkillbuf[i] = 0;
-
             //prepare the default settings
-            SUBnoteParameters *defaultPreset = new SUBnoteParameters();
-            XMLwrapper *wrap = new XMLwrapper();
-            wrap->loadXMLfile(string(SOURCE_DIR)
+            SUBnoteParameters *defaultPreset = new SUBnoteParameters(time);
+            XMLwrapper wrap;
+            wrap.loadXMLfile(string(SOURCE_DIR)
                               + string("/guitar-adnote.xmz"));
-            TS_ASSERT(wrap->enterbranch("MASTER"));
-            TS_ASSERT(wrap->enterbranch("PART", 1));
-            TS_ASSERT(wrap->enterbranch("INSTRUMENT"));
-            TS_ASSERT(wrap->enterbranch("INSTRUMENT_KIT"));
-            TS_ASSERT(wrap->enterbranch("INSTRUMENT_KIT_ITEM", 0));
-            TS_ASSERT(wrap->enterbranch("SUB_SYNTH_PARAMETERS"));
+            TS_ASSERT(wrap.enterbranch("MASTER"));
+            TS_ASSERT(wrap.enterbranch("PART", 1));
+            TS_ASSERT(wrap.enterbranch("INSTRUMENT"));
+            TS_ASSERT(wrap.enterbranch("INSTRUMENT_KIT"));
+            TS_ASSERT(wrap.enterbranch("INSTRUMENT_KIT_ITEM", 0));
+            TS_ASSERT(wrap.enterbranch("SUB_SYNTH_PARAMETERS"));
             defaultPreset->getfromXML(wrap);
 
-            controller = new Controller();
+            controller = new Controller(*synth, time);
 
             //lets go with.... 50! as a nice note
             testnote = 50;
             float freq = 440.0f * powf(2.0f, (testnote - 69.0f) / 12.0f);
 
-            SynthParams pars{memory, *controller, freq, 120, 0, testnote, false};
+            SynthParams pars{memory, *controller, *synth, *time, freq, 120, 0, testnote, false};
             note = new SUBnote(defaultPreset, pars);
-            delete wrap;
             delete defaultPreset;
-        }
-
-        void willNoteBeRunButIsHereForLinkingReasonsHowsThisForCamelCaseEh()
-        {
-            master = new Master();
         }
 
         void tearDown() {
@@ -103,7 +94,7 @@ class SubNoteTest:public CxxTest::TestSuite
             delete note;
             delete [] outL;
             delete [] outR;
-            delete [] denormalkillbuf;
+            delete time;
             delete synth;
         }
 

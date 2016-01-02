@@ -7,7 +7,7 @@
 #include "Allocator.h"
 
 //Used for dummy allocations
-Allocator DummyAlloc;
+DummyAllocator DummyAlloc;
 
 //recursive type class to avoid void *v = *(void**)v style casting
 struct next_t
@@ -33,10 +33,10 @@ struct AllocatorImpl
     unsigned long long totalAlloced = 0;
 };
 
-Allocator::Allocator(void)
+Allocator::Allocator(void) : transaction_active()
 {
     impl = new AllocatorImpl;
-    size_t default_size = 5*1024*1024;
+    size_t default_size = 10*1024*1024;
     impl->pools = (next_t*)malloc(default_size);
     impl->pools->next = 0x0;
     impl->pools->pool_size = default_size;
@@ -57,7 +57,7 @@ Allocator::~Allocator(void)
     delete impl;
 }
 
-void *Allocator::alloc_mem(size_t mem_size)
+void *AllocatorClass::alloc_mem(size_t mem_size)
 {
     impl->totalAlloced += mem_size;
     void *mem = tlsf_malloc(impl->tlsf, mem_size);
@@ -66,14 +66,14 @@ void *Allocator::alloc_mem(size_t mem_size)
     //printf("Allocator result = %p\n", mem);
     return mem;
 }
-void Allocator::dealloc_mem(void *memory)
+void AllocatorClass::dealloc_mem(void *memory)
 {
     //printf("dealloc_mem(%d)\n", tlsf_block_size(memory));
     tlsf_free(impl->tlsf, memory);
     //free(memory);
 }
 
-bool Allocator::lowMemory(unsigned n, size_t chunk_size)
+bool AllocatorClass::lowMemory(unsigned n, size_t chunk_size) const
 {
     //This should stay on the stack
     void *buf[n];
@@ -90,7 +90,7 @@ bool Allocator::lowMemory(unsigned n, size_t chunk_size)
 }
 
 
-void Allocator::addMemory(void *v, size_t mem_size)
+void AllocatorClass::addMemory(void *v, size_t mem_size)
 {
     next_t *n = impl->pools;
     while(n->next) n = n->next;
@@ -107,6 +107,7 @@ void Allocator::addMemory(void *v, size_t mem_size)
         printf("FAILED TO INSERT MEMORY POOL\n");
 };//{(void)mem_size;};
 
+#ifndef INCLUDED_tlsfbits
 //From tlsf internals
 typedef struct block_header_t
 {
@@ -121,8 +122,22 @@ typedef struct block_header_t
 	struct block_header_t* prev_free;
 } block_header_t;
 static const size_t block_header_free_bit = 1 << 0;
+#endif
 
-bool Allocator::memFree(void *pool)
+void Allocator::beginTransaction() {
+    // TODO: log about unsupported nested transaction when a RT compliant
+    // logging is available and transaction_active == true
+    transaction_active = true;
+    transaction_alloc_index = 0;
+}
+
+void Allocator::endTransaction() {
+    // TODO: log about invalid end of transaction when a RT copmliant logging
+    // is available and transaction_active == false
+    transaction_active = false;
+}
+
+bool Allocator::memFree(void *pool) const
 {
     size_t bh_shift = sizeof(next_t)+sizeof(size_t);
     //Assume that memory is free to start with
@@ -143,7 +158,7 @@ bool Allocator::memFree(void *pool)
     return isFree;
 }
 
-int Allocator::memPools()
+int Allocator::memPools() const
 {
     int i = 1;
     next_t *n = impl->pools;
@@ -154,7 +169,7 @@ int Allocator::memPools()
     return i;
 }
 
-int Allocator::freePools()
+int Allocator::freePools() const
 {
     int i = 0;
     next_t *n = impl->pools->next;
@@ -167,9 +182,25 @@ int Allocator::freePools()
 }
 
 
-unsigned long long Allocator::totalAlloced()
+unsigned long long Allocator::totalAlloced() const
 {
     return impl->totalAlloced;
+}
+
+void Allocator::rollbackTransaction() {
+
+    // if a transaction is active
+    if (transaction_active) {
+
+        // deallocate all allocated memory within this transaction
+        for (size_t temp_idx = 0;
+             temp_idx < transaction_alloc_index; ++temp_idx) {
+            dealloc_mem(transaction_alloc_content[temp_idx]);
+        }
+
+    }
+
+    transaction_active = false;
 }
 
 /*

@@ -61,7 +61,7 @@ class PartSysEffSend {open : {public Fl_Group}
       private xywh {604 244 100 100} type Double box NO_BOX
       class Fl_Group visible
     } {
-      Fl_Dial {} {
+      Fl_Dial widget {
         label 01
         xywh {0 0 25 25} box ROUND_UP_BOX labelfont 1 labelsize 10 align 130 maximum 127 step 1
         code0 {o->size(25,25);}
@@ -83,6 +83,18 @@ make_window();
 syseffsend->show();
 end();} {}
   }
+  Function {rebase(int part)} {} {
+    code {
+    auto *osc = widget->osc;
+    std::string old = "Psysefxvol"+to_s(neff)+"/part"+to_s(npart);
+    std::string next = "Psysefxvol"+to_s(neff)+"/part"+to_s(part);
+    widget->ext      = next;
+    osc->renameLink("/"+old, "/"+next, widget);
+    osc->requestValue("/"+next);
+    npart = part;
+    } {}
+  }
+
   Function {~PartSysEffSend()} {} {
     code {syseffsend->hide();
 //delete(syseffsend);} {}
@@ -112,13 +124,17 @@ class PartKitItem {open : {public Fl_Osc_Group}
         }
         Fl_Button {} {
           label m
-          callback {o->oscWrite("grabMinKey");}
+          callback {o->oscWrite("captureMin");
+minkcounter->update();
+maxkcounter->update();}
           tooltip {set the minimum key to the last pressed key} xywh {285 3 15 12} box THIN_UP_BOX labelsize 10
           class Fl_Osc_Button
         }
         Fl_Button {} {
           label M
-          callback {o->oscWrite("grabMaxKey");}
+          callback {o->oscWrite("captureMax");
+minkcounter->update();
+maxkcounter->update();}
           tooltip {set the maximum key to the last pressed key} xywh {315 3 15 12} box THIN_UP_BOX labelsize 10
           class Fl_Osc_Button
         }
@@ -132,18 +148,23 @@ maxkcounter->do_callback();}
         }
         Fl_Button adeditbutton {
           label edit
-          callback {partui->showparameters(n,0);}
+          callback {
+	  if (Fl::event_shift())
+	      partui->showvoiceparams(n, true);
+	  else if (Fl::event_ctrl())
+	      partui->showvoiceparams(n, false);
+	  else
+	      partui->showparameters(n,0);
+	  }
           xywh {420 0 40 15} box THIN_UP_BOX labelsize 11
-          code1 {if (n==0) o->hide();}
         }
         Fl_Button subeditbutton {
           label edit
           callback {partui->showparameters(n,1);}
           xywh {490 0 40 15} box THIN_UP_BOX labelsize 11
-          code1 {if (n==0) o->hide();}
         }
         Fl_Check_Button mutedcheck {
-          private xywh {60 0 20 15} down_box DOWN_BOX labelfont 1 labelsize 11 align 4
+          xywh {60 0 20 15} down_box DOWN_BOX labelfont 1 labelsize 11 align 4
           code0 {o->init("Pmuted");}
           class Fl_Osc_Check
         }
@@ -156,6 +177,7 @@ maxkcounter->do_callback();}
           label {Bass Drum}
           xywh {90 0 130 15} box THIN_DOWN_BOX labelfont 1 labelsize 10 align 20
           code0 {o->init("Pname");}
+	  callback { o->oscWrite(o->ext, "s", o->value()); }
           class Fl_Osc_Input
         }
         Fl_Check_Button adcheck {
@@ -163,7 +185,6 @@ maxkcounter->do_callback();}
        else  adeditbutton->deactivate();}
           private xywh {400 0 20 15} down_box DOWN_BOX labelfont 1 labelsize 11 align 4
           code0 {o->init("Padenabled");}
-          code1 {if (n==0) o->hide();}
           class Fl_Osc_Check
         }
         Fl_Check_Button subcheck {
@@ -171,7 +192,6 @@ maxkcounter->do_callback();}
        else  subeditbutton->deactivate();}
           private xywh {470 0 20 15} down_box DOWN_BOX labelfont 1 labelsize 11 align 4
           code0 {o->init("Psubenabled");}
-          code1 {if (n==0) o->hide();}
           class Fl_Osc_Check
         }
         Fl_Choice sendtoeffect {
@@ -184,14 +204,12 @@ maxkcounter->do_callback();}
           label edit
           callback {partui->showparameters(n,2);}
           xywh {560 0 40 15} box THIN_UP_BOX labelsize 11
-          code1 {if (n==0) o->hide();}
         }
         Fl_Check_Button padcheck {
           callback {if (o->value()!=0) padeditbutton->activate();
        else padeditbutton->deactivate();}
           private xywh {540 0 20 15} down_box DOWN_BOX labelfont 1 labelsize 11 align 4
           code0 {o->init("Ppadenabled");}
-          code1 {if (n==0) o->hide();}
           class Fl_Osc_Check
         }
       }
@@ -227,6 +245,11 @@ partui->showparameters(n,-1);//use to delete the ui, if it is not to item 0}
         ext = "kit"+to_s(n)+"/";
 partui=partui_;
 make_window();
+if (n == 0)
+    mutedcheck->deactivate();
+else
+    deactivate();
+
 //partkititem->show();
 end();} {}
   }
@@ -256,7 +279,7 @@ class PartUI {open : {public Fl_Osc_Group}
         Fl_Dial {} {
           label Pan
           xywh {50 40 25 25} box ROUND_UP_BOX labelsize 11 maximum 127 step 1
-          code0 {o->init("Ppanning");}
+          code0 {o->init("Ppanning"); o->reset_value=64;}
           class Fl_Osc_Dial
         }
         Fl_Counter {} {
@@ -279,10 +302,9 @@ class PartUI {open : {public Fl_Osc_Group}
           label {Grand Piano}
           callback {int event=Fl::event_button();
 if (event==FL_RIGHT_MOUSE){
-   fprintf(stderr, "Unimplemented...\\n");
    const char *tmp=fl_input("Instrument name:",o->label());
-   o->oscWrite("Pname", "s", tmp);
-   /*if (tmp!=NULL) snprintf((char *)part->Pname,PART_MAX_NAME_LEN,"%s",tmp);*/
+   if (tmp!=NULL)
+       o->oscWrite("Pname", "s", tmp);
 } else {
   if (event==FL_LEFT_MOUSE) bankui->show();
        else instrumenteditwindow->show();
@@ -322,19 +344,19 @@ if (event==FL_RIGHT_MOUSE){
         Fl_Dial {} {
           label Volume
           tooltip {Part Volume} xywh {10 35 30 30} box ROUND_UP_BOX labelsize 11 maximum 127 step 1
-          code0 {o->init("Pvolume");}
+          code0 {o->init("Pvolume"); o->reset_value=96;}
           class Fl_Osc_Dial
         }
         Fl_Dial {} {
           label {Vel.Ofs.}
           tooltip {Velocity Offset} xywh {135 40 25 25} box ROUND_UP_BOX labelsize 10 maximum 127 step 1
-          code0 {o->init("Pveloffs");}
+          code0 {o->init("Pveloffs"); o->reset_value=64;}
           class Fl_Osc_Dial
         }
         Fl_Dial {} {
           label {Vel.Sns.}
           tooltip {Velocity Sensing Function} xywh {95 40 25 25} box ROUND_UP_BOX labelsize 10 maximum 127 step 1
-          code0 {o->init("Pvelsns");}
+          code0 {o->init("Pvelsns"); o->reset_value=64;}
           class Fl_Osc_Dial
         }
         Fl_Button {} {
@@ -350,7 +372,12 @@ if (event==FL_RIGHT_MOUSE){
         }
         Fl_Button {} {
           label {Edit instrument}
-          callback {instrumenteditwindow->show();}
+          callback {
+          if (Fl::event_shift() || Fl::event_ctrl())
+              instrumentkitlist->show();
+          else
+              instrumenteditwindow->show();
+          }
           xywh {15 90 130 30} color 52 labelfont 1 labelsize 13
         }
         Fl_Button {} {
@@ -410,66 +437,79 @@ if (event==FL_RIGHT_MOUSE){
     }
     Fl_Window ctlwindow {
       label Controllers
-      private xywh {777 376 500 130} type Double box NO_BOX
+      private xywh {777 376 500 135} type Double box NO_BOX
       class Fl_Osc_Window visible
     } {
       Fl_Box {} {
         xywh {0 0 0 0}
-        code0 {ctlwindow->osc = osc;}
-        code1 {ctlwindow->base = "/part"+to_s(npart)+"/ctl/";}
+        code0 {ctlwindow->init(osc,"/part"+to_s(npart)+"/ctl/");}
       }
       Fl_Check_Button {} {
         label Expr
-        tooltip {Expression enable} xywh {155 55 45 20} box THIN_UP_BOX down_box DOWN_BOX labelsize 10
+        tooltip {Expression enable} xywh {155 58 45 20} box THIN_UP_BOX down_box DOWN_BOX labelsize 10
         code0 {o->init("expression.receive");}
         class Fl_Osc_Check
       }
       Fl_Dial {} {
         label PanDpth
         tooltip {Panning Depth} xywh {10 55 30 30} labelsize 10 maximum 127 step 1
-        code0 {o->init("panning.depth");}
+        code0 {o->init("panning.depth");o->reset_value=64;}
         class Fl_Osc_Dial
       }
       Fl_Dial {} {
         label FltCut
         tooltip {Filter Cutoff depth} xywh {90 55 30 30} labelsize 10 maximum 127 step 1
-        code0 {o->init("filtercutoff.depth");}
+        code0 {o->init("filtercutoff.depth");o->reset_value=64;}
         class Fl_Osc_Dial
       }
       Fl_Dial {} {
         label FltQ
         tooltip {Filter Q depth} xywh {50 55 30 30} labelsize 10 maximum 127 step 1
-        code0 {o->init("filterq.depth");}
+        code0 {o->init("filterq.depth");o->reset_value=64;}
         class Fl_Osc_Dial
       }
       Fl_Dial {} {
         label BwDpth
         tooltip {BandWidth depth} xywh {125 10 30 30} labelsize 10 maximum 127 step 1
-        code0 {o->init("bandwidth.depth");}
+        code0 {o->init("bandwidth.depth");o->reset_value=64;}
         class Fl_Osc_Dial
       }
       Fl_Dial {} {
         label ModWh
         tooltip {Modulation Wheel depth} xywh {50 10 30 30} labelsize 10 maximum 127 step 1
-        code0 {o->init("modwheel.depth");}
+        code0 {o->init("modwheel.depth");o->reset_value=80;}
         class Fl_Osc_Dial
       }
-      Fl_Counter {} {
+      Fl_Check_Button benddir {
+        label Downward
+        callback {if (o->value()) {bendrng->oscMove("pitchwheel.bendrange_down");}
+else {bendrng->oscMove("pitchwheel.bendrange");}}
+        xywh {205 37 69 15} down_box DOWN_BOX labelsize 10
+      }
+      Fl_Counter bendrng {
         label {PWheelB.Rng (cents)}
         tooltip {Pitch Wheel Bend Range (cents)} xywh {165 15 110 20} labelsize 10 align 1 minimum -6400 maximum 6400 step 1
         code0 {o->init("pitchwheel.bendrange", 'i');}
         code1 {o->lstep(100);}
         class Fl_Osc_Counter
       }
+      Fl_Check_Button bendsplt {
+        label Split
+        callback {if(o->value()) {benddir->activate();}
+            else {benddir->deactivate(); benddir->value(0); benddir->do_callback();}}
+        xywh {167 37 38 15} down_box DOWN_BOX labelsize 10
+        code0 {o->init("pitchwheel.is_split");}
+        class Fl_Osc_Check
+      }
       Fl_Check_Button {} {
         label FMamp
-        tooltip {FM amplitude enable} xywh {205 55 60 20} box THIN_UP_BOX down_box DOWN_BOX labelsize 10
+        tooltip {FM amplitude enable} xywh {205 58 60 20} box THIN_UP_BOX down_box DOWN_BOX labelsize 10
         code0 {o->init("fmamp.receive");}
         class Fl_Osc_Check
       }
       Fl_Check_Button {} {
         label Vol
-        tooltip {Volume enable} xywh {155 80 45 20} box THIN_UP_BOX down_box DOWN_BOX labelsize 10
+        tooltip {Volume enable} xywh {155 83 45 20} box THIN_UP_BOX down_box DOWN_BOX labelsize 10
         code0 {o->init("volume.receive");}
         class Fl_Osc_Check
       }
@@ -480,19 +520,21 @@ if (event==FL_RIGHT_MOUSE){
                 ReleaseSustainedKeys();
                 ctl.setsustain(0);
             };*/}
-        tooltip {Sustain pedal enable} xywh {205 80 60 20} box THIN_UP_BOX down_box DOWN_BOX labelsize 10
+        tooltip {Sustain pedal enable} xywh {205 83 60 20} box THIN_UP_BOX down_box DOWN_BOX labelsize 10
         code0 {o->init("sustain.receive");}
         class Fl_Osc_Check
       }
       Fl_Button {} {
         label Close
         callback {ctlwindow->hide();}
-        xywh {400 107 95 20} box THIN_UP_BOX
+        xywh {400 110 95 20} box THIN_UP_BOX
       }
       Fl_Button {} {
         label {Reset all controllers}
-        callback {o->oscWrite("defaults");//part->SetController(C_resetallcontrollers,0);}
-        xywh {5 107 210 20} box THIN_UP_BOX
+        callback {o->oscWrite("defaults");//part->SetController(C_resetallcontrollers,0);
+	ctlwindow->update();
+	}
+        xywh {5 110 210 20} box THIN_UP_BOX
         class Fl_Osc_Button
       }
       Fl_Group {} {
@@ -509,7 +551,7 @@ if (event==FL_RIGHT_MOUSE){
         Fl_Dial {} {
           label time
           tooltip {Portamento time} xywh {285 60 25 25} labelsize 10 maximum 127 step 1
-          code0 {o->init("portamento.time");}
+          code0 {o->init("portamento.time");o->reset_value=64;}
           class Fl_Osc_Dial
         }
         Fl_Counter {} {
@@ -531,19 +573,19 @@ if (event==FL_RIGHT_MOUSE){
         Fl_Dial {} {
           label {t.dn/up}
           tooltip {Portamento time stretch (up/down)} xywh {315 60 25 25} labelsize 10 maximum 127 step 1
-          code0 {o->init("portamento.updowntimestretch");}
+          code0 {o->init("portamento.updowntimestretch");o->reset_value=64;}
           class Fl_Osc_Dial
         }
         Fl_Dial propta {
           label {Prp.Rate}
           tooltip {Distance required to double change from nonpropotinal portamento time} xywh {405 20 25 25} labelsize 9 maximum 127 step 1
-          code0 {o->init("portamento.propRate");}
+          code0 {o->init("portamento.propRate");o->reset_value=80;}
           class Fl_Osc_Dial
         }
         Fl_Dial proptb {
           label {Prp.Dpth}
           tooltip {The difference from nonproportinal portamento} xywh {405 60 25 25} labelsize 9 maximum 127 step 1
-          code0 {o->init("portamento.propDepth");}
+          code0 {o->init("portamento.propDepth");o->reset_value=90;}
           class Fl_Osc_Dial
         }
         Fl_Check_Button {} {
@@ -563,13 +605,13 @@ else {propta->deactivate();proptb->deactivate();}}
         Fl_Dial {} {
           label BWdpth
           tooltip {BandWidth controller depth} xywh {455 60 25 25} labelsize 10 maximum 127 step 1
-          code0 {o->init("resonancebandwidth.depth");}
+          code0 {o->init("resonancebandwidth.depth");o->reset_value=64;}
           class Fl_Osc_Dial
         }
         Fl_Dial {} {
           label CFdpth
           tooltip {Center Frequency controller Depth} xywh {455 20 25 25} labelsize 10 maximum 127 step 1
-          code0 {o->init("resonancecenter.depth");}
+          code0 {o->init("resonancecenter.depth");o->reset_value=64;}
           class Fl_Osc_Dial
         }
       }
@@ -593,8 +635,7 @@ else {propta->deactivate();proptb->deactivate();}}
     } {
       Fl_Box {} {
         xywh {0 0 0 0}
-        code0 {partfx->osc  = osc;}
-        code1 {partfx->base = part_path;}
+        code0 {partfx->init(osc, part_path);}
       }
       Fl_Counter inseffnocounter {
         label {FX No.}
@@ -709,12 +750,12 @@ if (x==2) part->partefx[ninseff]->setdryonly(true);
       }
       Fl_Button {} {
         label C
-        callback {presetsui->copy(partfx->loc());}
+        callback {presetsui->copy(partfx->loc()+"partefx"+to_s(ninseff)+"/");}
         xywh {90 127 25 15} box THIN_UP_BOX color 179 labelfont 1 labelsize 11 labelcolor 55
       }
       Fl_Button {} {
         label P
-        callback {presetsui->paste(partfx->loc(),inseffectui);}
+        callback {presetsui->paste(partfx->loc()+"partefx"+to_s(ninseff)+"/",inseffectui);}
         xywh {120 127 25 15} box THIN_UP_BOX color 179 labelfont 1 labelsize 11 labelcolor 55
       }
     }
@@ -725,13 +766,12 @@ if (x==2) part->partefx[ninseff]->setdryonly(true);
     } {
       Fl_Box {} {
         xywh {0 0 0 0}
-        code0 {instrumentkitlist->osc = osc;}
-        code1 {instrumentkitlist->base = "/part"+to_s(npart)+"/";}
+        code0 {instrumentkitlist->init(osc, "/part"+to_s(npart)+"/");}
       }
       Fl_Button {} {
         label {Close Window}
         callback {instrumentkitlist->hide();}
-        xywh {375 350 160 20} box THIN_UP_BOX
+        xywh {255 350 160 20} box THIN_UP_BOX
       }
       Fl_Scroll kitlist {open
         xywh {0 15 670 330} type VERTICAL box UP_FRAME
@@ -767,7 +807,14 @@ if (x==2) part->partefx[ninseff]->setdryonly(true);
       }
       Fl_Choice {} {
         label Mode
-        callback {if (o->value()==0) { kitlist->deactivate(); } else { kitlist->activate(); };}
+        callback {if (o->value()==0) {
+		 for (int i=1;i<NUM_KIT_ITEMS;i++)
+		   partkititem[i]->deactivate();
+		 partkititem[0]->mutedcheck->deactivate();
+        } else {
+		 for (int i=1;i<NUM_KIT_ITEMS;i++)
+		   partkititem[i]->activate();
+                   partkititem[0]->mutedcheck->activate(); };}
         xywh {35 350 70 15} down_box BORDER_BOX labelsize 11 textfont 1 textsize 11
         code0 {o->init("Pkitmode");}
         class Fl_Osc_Choice
@@ -787,10 +834,21 @@ if (x==2) part->partefx[ninseff]->setdryonly(true);
       }
       Fl_Check_Button {} {
         label {Drum mode}
-        xywh {285 350 70 15} down_box DOWN_BOX labelsize 10
+        xywh {125 350 80 15} down_box DOWN_BOX labelsize 10
         code0 {o->init("Pdrummode");}
         class Fl_Osc_Check
       }
+      Fl_Button {} {
+        label Comments
+        callback {instrumenteditwindow->show();}
+        xywh {481 350 106 20} box THIN_UP_BOX
+      }
+      Fl_Button {} {
+        label Effects
+        callback {partfx->show();} selected
+        xywh {600 350 70 20} box THIN_UP_BOX
+      }
+
       Fl_Box {} {
         label {FX.r.}
         xywh {620 0 30 15} labelfont 1 labelsize 11 align 18
@@ -807,15 +865,14 @@ if (x==2) part->partefx[ninseff]->setdryonly(true);
     } {
       Fl_Box {} {
         xywh {0 0 0 0}
-        code0 {instrumenteditwindow->osc = osc;}
-        code1 {instrumenteditwindow->base = "/part"+to_s(npart)+"/";}
+        code0 {instrumenteditwindow->init(osc, "/part"+to_s(npart)+"/");}
       }
       Fl_Group editgroup {
         xywh {0 220 395 110} box UP_FRAME
         class Fl_Osc_Group
       } {
         Fl_Box {} {
-          xywh {0 0 0 0}
+          xywh {0 220 0 0}
           code0 {editgroup->ext = "kit0/";}
         }
         Fl_Group {} {
@@ -850,7 +907,14 @@ if (x==2) part->partefx[ninseff]->setdryonly(true);
           }
           Fl_Button adeditbutton {
             label Edit
-            callback {showparameters(0,0);}
+            callback {
+	    if (Fl::event_shift()) {
+	        showvoiceparams(0, true);
+	    } else if (Fl::event_ctrl()) {
+	        showvoiceparams(0, false);
+	    } else
+	        showparameters(0,0);
+	    }
             xywh {15 281 80 34} color 51 selection_color 51 labelfont 1 labelsize 13 align 128
           }
         }
@@ -891,6 +955,7 @@ if (x==2) part->partefx[ninseff]->setdryonly(true);
           xywh {5 60 385 50} type Multiline color 124 labelsize 10 align 5
           code0 {o->maximum_size(MAX_INFO_TEXT_SIZE);}
           code1 {o->init("info.Pauthor");}
+	  callback { o->oscWrite(o->ext, "s", o->value()); }
           class Fl_Osc_Input
         }
         Fl_Input {} {
@@ -898,6 +963,7 @@ if (x==2) part->partefx[ninseff]->setdryonly(true);
           xywh {5 125 385 90} type Multiline color 124 labelsize 11 align 5
           code0 {o->maximum_size(MAX_INFO_TEXT_SIZE);}
           code1 {o->init("info.Pcomments");}
+	  callback { o->oscWrite(o->ext, "s", o->value()); }
           class Fl_Osc_Input
         }
         Fl_Choice {} {
@@ -1017,6 +1083,23 @@ end();
 //if (config.ui.showinstrumentinfo!=0) instrumenteditwindow->show();
 } {}
   }
+  Function {cleanuplastkit(int kititem)} {open return_type int
+  } {
+    code {
+if (kititem==lastkititem)
+  return 0;
+delete adnoteui;
+delete subnoteui;
+delete padnoteui;
+adnoteui=NULL;subnoteui=NULL;padnoteui=NULL;
+lastkititem=kititem;
+
+if(kititem>=NUM_KIT_ITEMS) return 1;//bad kit item
+if(kititem<0) return 1;
+return 0;
+} {}}
+
+
   Function {showparameters(int kititem,int engine)} {open
   } {
     code {
@@ -1030,16 +1113,8 @@ if (engine==-1){//this is used if I want to clear the engine from the part
     return;
 }
 
-if (kititem!=lastkititem){
-    delete adnoteui;
-    delete subnoteui;   
-    delete padnoteui;
-    adnoteui=NULL;subnoteui=NULL;padnoteui=NULL;
-    lastkititem=kititem;
-
-    if(kititem>=NUM_KIT_ITEMS) return;//bad kit item
-    if(kititem<0) return;
-}
+    if (cleanuplastkit(kititem))
+        return;
 
 if(!adnoteui  && engine==0)//adsynenabledcheck->value())
     adnoteui=new ADnoteUI(loc+"kit"+to_s(kititem)+"/adpars/", osc);
@@ -1054,6 +1129,23 @@ if (engine==0&&adnoteui) adnoteui->ADnoteGlobalParameters->show();
 if (engine==1&&subnoteui) subnoteui->SUBparameters->show();
 if (engine==2&&padnoteui) padnoteui->padnotewindow->show();} {}
   }
+  Function {showvoiceparams(int kititem, bool voicelist)} {open
+  } {
+    code {
+if (cleanuplastkit(kititem))
+    return;
+if(adnoteui ||
+   (adnoteui=new ADnoteUI(loc+"kit"+to_s(kititem)+"/adpars/", osc))) {
+    if(voicelist)
+        adnoteui->ADnoteVoiceList->show();
+    else {
+        if (adnoteui->advoice->mod_type->value() == 0)
+	    adnoteui->advoice->voiceFMparametersgroup->deactivate();
+	else
+	    adnoteui->advoice->voiceFMparametersgroup->activate();
+	adnoteui->ADnoteVoice->show();
+    }}} {}}
+
   Function {~PartUI()} {} {
     code {delete adnoteui;
 delete subnoteui;
@@ -1076,7 +1168,7 @@ delete(instrumenteditwindow);} {}
   }
   decl {BankUI *bankui;} {private local
   }
-  decl {ADnoteUI *adnoteui;} {private local
+  decl {ADnoteUI *adnoteui;} {selected public local
   }
   decl {SUBnoteUI *subnoteui;} {private local
   }
@@ -1108,6 +1200,12 @@ partfx->rebase(new_loc);
 instrumentkitlist->rebase(new_loc);
 instrumenteditwindow->rebase(new_loc);
 partenablebutton->rebase(new_loc);
+int next_part = 0;
+const char *tmp = new_loc.c_str();
+while(*tmp && !isdigit(*tmp)) tmp++;
+next_part = atoi(tmp);
+for (int i=0;i<NUM_SYS_EFX;i++)
+    psyef[i]->rebase(next_part);
 } {selected
     }
   }

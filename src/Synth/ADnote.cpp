@@ -35,14 +35,14 @@
 #include "OscilGen.h"
 #include "ADnote.h"
 
-
 ADnote::ADnote(ADnoteParameters *pars_, SynthParams &spars)
     :SynthNote(spars), pars(*pars_)
 {
-    tmpwavel = memory.valloc<float>(synth->buffersize);
-    tmpwaver = memory.valloc<float>(synth->buffersize);
-    bypassl  = memory.valloc<float>(synth->buffersize);
-    bypassr  = memory.valloc<float>(synth->buffersize);
+    memory.beginTransaction();
+    tmpwavel = memory.valloc<float>(synth.buffersize);
+    tmpwaver = memory.valloc<float>(synth.buffersize);
+    bypassl  = memory.valloc<float>(synth.buffersize);
+    bypassr  = memory.valloc<float>(synth.buffersize);
 
     ADnoteParameters &pars = *pars_;
     portamento  = spars.portamento;
@@ -50,7 +50,6 @@ ADnote::ADnote(ADnoteParameters *pars_, SynthParams &spars)
     NoteEnabled = ON;
     basefreq    = spars.frequency;
     velocity    = spars.velocity;
-    time   = 0.0f;
     stereo = pars.GlobalPar.PStereo;
 
     NoteGlobalPar.Detune = getdetune(pars.GlobalPar.PDetuneType,
@@ -71,6 +70,9 @@ ADnote::ADnote(ADnoteParameters *pars_, SynthParams &spars)
                                               pars.GlobalPar.
                                               PFilterVelocityScaleFunction) - 1);
 
+    NoteGlobalPar.Fadein_adjustment =
+        pars.GlobalPar.Fadein_adjustment / (float)FADEIN_ADJUSTMENT_SCALE;
+    NoteGlobalPar.Fadein_adjustment *= NoteGlobalPar.Fadein_adjustment;
     if(pars.GlobalPar.PPunchStrength != 0) {
         NoteGlobalPar.Punch.Enabled = 1;
         NoteGlobalPar.Punch.t = 1.0f; //start from 1.0f and to 0.0f
@@ -82,12 +84,15 @@ ADnote::ADnote(ADnoteParameters *pars_, SynthParams &spars)
             powf(10, 3.0f * pars.GlobalPar.PPunchTime / 127.0f) / 10000.0f;   //0.1f .. 100 ms
         float stretch = powf(440.0f / spars.frequency,
                              pars.GlobalPar.PPunchStretch / 64.0f);
-        NoteGlobalPar.Punch.dt = 1.0f / (time * synth->samplerate_f * stretch);
+        NoteGlobalPar.Punch.dt = 1.0f / (time * synth.samplerate_f * stretch);
     }
     else
         NoteGlobalPar.Punch.Enabled = 0;
 
     for(int nvoice = 0; nvoice < NUM_VOICES; ++nvoice) {
+        for (int i = 0; i < 14; i++)
+            pinking[nvoice][i] = 0.0;
+
         pars.VoicePar[nvoice].OscilSmp->newrandseed(prng());
         NoteVoicePar[nvoice].OscilSmp = NULL;
         NoteVoicePar[nvoice].FMSmp    = NULL;
@@ -101,11 +106,36 @@ ADnote::ADnote(ADnoteParameters *pars_, SynthParams &spars)
             continue; //the voice is disabled
         }
 
+        int BendAdj = pars.VoicePar[nvoice].PBendAdjust - 64;
+        if (BendAdj % 24 == 0)
+            NoteVoicePar[nvoice].BendAdjust = BendAdj / 24;
+        else
+            NoteVoicePar[nvoice].BendAdjust = BendAdj / 24.0f;
+
+        float offset_val = (pars.VoicePar[nvoice].POffsetHz - 64)/64.0f;
+        NoteVoicePar[nvoice].OffsetHz =
+            15.0f*(offset_val * sqrtf(fabsf(offset_val)));
+
         unison_stereo_spread[nvoice] =
             pars.VoicePar[nvoice].Unison_stereo_spread / 127.0f;
+
         int unison = pars.VoicePar[nvoice].Unison_size;
         if(unison < 1)
             unison = 1;
+
+        bool is_pwm = pars.VoicePar[nvoice].PFMEnabled == PW_MOD;
+
+	if (pars.VoicePar[nvoice].Type != 0) {
+            // Since noise unison of greater than two is touch goofy...
+            if (unison > 2)
+                unison = 2;
+        } else if (is_pwm) {
+            /* Pulse width mod uses pairs of subvoices. */
+            unison *= 2;
+            // This many is likely to sound like noise anyhow.
+            if (unison > 64)
+                unison = 64;
+        }
 
         //compute unison
         unison_size[nvoice] = unison;
@@ -119,8 +149,8 @@ ADnote::ADnote(ADnoteParameters *pars_, SynthParams &spars)
         float unison_vibratto_a  =
             pars.VoicePar[nvoice].Unison_vibratto / 127.0f; //0.0f .. 1.0f
 
-
-        switch(unison) {
+        int true_unison = unison / (is_pwm ? 2 : 1);
+        switch(true_unison) {
             case 1:
                 unison_base_freq_rap[nvoice][0] = 1.0f; //if the unison is not used, always make the only subvoice to have the default note
                 break;
@@ -130,11 +160,11 @@ ADnote::ADnote(ADnoteParameters *pars_, SynthParams &spars)
             };
                 break;
             default: { //unison for more than 2 subvoices
-                float unison_values[unison];
+                float unison_values[true_unison];
                 float min = -1e-6, max = 1e-6;
-                for(int k = 0; k < unison; ++k) {
-                    float step = (k / (float) (unison - 1)) * 2.0f - 1.0f; //this makes the unison spread more uniform
-                    float val  = step + (RND * 2.0f - 1.0f) / (unison - 1);
+                for(int k = 0; k < true_unison; ++k) {
+                    float step = (k / (float) (true_unison - 1)) * 2.0f - 1.0f; //this makes the unison spread more uniform
+                    float val  = step + (RND * 2.0f - 1.0f) / (true_unison - 1);
                     unison_values[k] = val;
                     if (min > val) {
                         min = val;
@@ -144,7 +174,7 @@ ADnote::ADnote(ADnoteParameters *pars_, SynthParams &spars)
                     }
                 }
                 float diff = max - min;
-                for(int k = 0; k < unison; ++k) {
+                for(int k = 0; k < true_unison; ++k) {
                     unison_values[k] =
                         (unison_values[k] - (max + min) * 0.5f) / diff;             //the lowest value will be -1 and the highest will be 1
                     unison_base_freq_rap[nvoice][k] =
@@ -152,9 +182,16 @@ ADnote::ADnote(ADnoteParameters *pars_, SynthParams &spars)
                 }
             };
         }
+        if (is_pwm)
+            for (int i = true_unison - 1; i >= 0; i--) {
+                unison_base_freq_rap[nvoice][2*i + 1] =
+                    unison_base_freq_rap[nvoice][i];
+                unison_base_freq_rap[nvoice][2*i] =
+                    unison_base_freq_rap[nvoice][i];
+            }
 
         //unison vibrattos
-        if(unison > 1)
+        if(unison > 2 || (!is_pwm && unison > 1))
             for(int k = 0; k < unison; ++k) //reduce the frequency difference for larger vibrattos
                 unison_base_freq_rap[nvoice][k] = 1.0f
                                                   + (unison_base_freq_rap[
@@ -165,7 +202,7 @@ ADnote::ADnote(ADnoteParameters *pars_, SynthParams &spars)
         unison_vibratto[nvoice].amplitude =
             (unison_real_spread - 1.0f) * unison_vibratto_a;
 
-        float increments_per_second = synth->samplerate_f / synth->buffersize_f;
+        float increments_per_second = synth.samplerate_f / synth.buffersize_f;
         const float vib_speed = pars.VoicePar[nvoice].Unison_vibratto_speed / 127.0f;
         float vibratto_base_period  = 0.25f * powf(2.0f, (1.0f - vib_speed) * 4.0f);
         for(int k = 0; k < unison; ++k) {
@@ -178,12 +215,27 @@ ADnote::ADnote(ADnoteParameters *pars_, SynthParams &spars)
             if(RND < 0.5f)
                 m = -m;
             unison_vibratto[nvoice].step[k] = m;
+
+            // Ugly, but the alternative is likely uglier.
+            if (is_pwm)
+                for (int i = 0; i < unison; i += 2) {
+                    unison_vibratto[nvoice].step[i+1] =
+                        unison_vibratto[nvoice].step[i];
+                    unison_vibratto[nvoice].position[i+1] =
+                        unison_vibratto[nvoice].position[i];
+                }
         }
 
-        if(unison == 1) { //no vibratto for a single voice
-            unison_vibratto[nvoice].step[0]     = 0.0f;
-            unison_vibratto[nvoice].position[0] = 0.0f;
-            unison_vibratto[nvoice].amplitude   = 0.0f;
+        if(unison <= 2) { //no vibratto for a single voice
+            if (is_pwm) {
+                unison_vibratto[nvoice].step[1]     = 0.0f;
+                unison_vibratto[nvoice].position[1] = 0.0f;
+            }
+            if (is_pwm || unison == 1) {
+                unison_vibratto[nvoice].step[0]     = 0.0f;
+                unison_vibratto[nvoice].position[0] = 0.0f;
+                unison_vibratto[nvoice].amplitude   = 0.0f;
+            }
         }
 
         //phase invert for unison
@@ -265,7 +317,7 @@ ADnote::ADnote(ADnoteParameters *pars_, SynthParams &spars)
 
         //the extra points contains the first point
         NoteVoicePar[nvoice].OscilSmp =
-            memory.valloc<float>(synth->oscilsize + OSCIL_SMP_EXTRA_SAMPLES);
+            memory.valloc<float>(synth.oscilsize + OSCIL_SMP_EXTRA_SAMPLES);
 
         //Get the voice's oscil or external's voice oscil
         int vc = nvoice;
@@ -278,23 +330,41 @@ ADnote::ADnote(ADnoteParameters *pars_, SynthParams &spars)
                                              getvoicebasefreq(nvoice),
                                              pars.VoicePar[nvoice].Presonance);
 
+        // This code was planned for biasing the carrier in MOD_RING
+        // but that's on hold for the moment.  Disabled 'cos small
+        // machines run this stuff too.
+        //
+        // //Find range of generated wave
+        // float min = NoteVoicePar[nvoice].OscilSmp[0];
+        // float max = min;
+        // float *smpls = &(NoteVoicePar[nvoice].OscilSmp[1]);
+        // for (int i = synth.oscilsize-1; i--; smpls++)
+        //     if (*smpls > max)
+        //         max = *smpls;
+        //     else if (*smpls < min)
+        //         min = *smpls;
+        // NoteVoicePar[nvoice].OscilSmpMin = min;
+        // NoteVoicePar[nvoice].OscilSmpMax = max;
+
         //I store the first elments to the last position for speedups
         for(int i = 0; i < OSCIL_SMP_EXTRA_SAMPLES; ++i)
-            NoteVoicePar[nvoice].OscilSmp[synth->oscilsize
+            NoteVoicePar[nvoice].OscilSmp[synth.oscilsize
                                           + i] =
                 NoteVoicePar[nvoice].OscilSmp[i];
 
-        oscposhi_start +=
+        NoteVoicePar[nvoice].phase_offset =
             (int)((pars.VoicePar[nvoice].Poscilphase
-                   - 64.0f) / 128.0f * synth->oscilsize + synth->oscilsize * 4);
-        oscposhi_start %= synth->oscilsize;
+                   - 64.0f) / 128.0f * synth.oscilsize
+                  + synth.oscilsize * 4);
+        oscposhi_start += NoteVoicePar[nvoice].phase_offset;
 
+        int kth_start = oscposhi_start;
         for(int k = 0; k < unison; ++k) {
-            oscposhi[nvoice][k] = oscposhi_start;
+            oscposhi[nvoice][k] = kth_start % synth.oscilsize;
             //put random starting point for other subvoices
-            oscposhi_start      =
+            kth_start      = oscposhi_start +
                 (int)(RND * pars.VoicePar[nvoice].Unison_phase_randomness /
-                        127.0f * (synth->oscilsize - 1));
+                        127.0f * (synth.oscilsize - 1));
         }
 
         NoteVoicePar[nvoice].FreqLfo      = NULL;
@@ -309,33 +379,42 @@ ADnote::ADnote(ADnoteParameters *pars_, SynthParams &spars)
         NoteVoicePar[nvoice].FilterLfo      = NULL;
 
         NoteVoicePar[nvoice].FilterCenterPitch =
-            pars.VoicePar[nvoice].VoiceFilter->getfreq();
+            pars.VoicePar[nvoice].VoiceFilter->getfreq()
+            + pars.VoicePar[nvoice].PFilterVelocityScale
+            / 127.0f * 6.0f       //velocity sensing
+            * (VelF(velocity,
+                    pars.VoicePar[nvoice].PFilterVelocityScaleFunction) - 1);
         NoteVoicePar[nvoice].filterbypass =
             pars.VoicePar[nvoice].Pfilterbypass;
 
-        switch(pars.VoicePar[nvoice].PFMEnabled) {
-            case 1:
-                NoteVoicePar[nvoice].FMEnabled = MORPH;
-                break;
-            case 2:
-                NoteVoicePar[nvoice].FMEnabled = RING_MOD;
-                break;
-            case 3:
-                NoteVoicePar[nvoice].FMEnabled = PHASE_MOD;
-                break;
-            case 4:
-                NoteVoicePar[nvoice].FMEnabled = FREQ_MOD;
-                break;
-            case 5:
-                NoteVoicePar[nvoice].FMEnabled = PITCH_MOD;
-                break;
-            default:
-                NoteVoicePar[nvoice].FMEnabled = NONE;
-        }
+        if (pars.VoicePar[nvoice].Type != 0)
+            NoteVoicePar[nvoice].FMEnabled = NONE;
+        else
+            switch(pars.VoicePar[nvoice].PFMEnabled) {
+                case 1:
+                    NoteVoicePar[nvoice].FMEnabled = MORPH;
+                    break;
+                case 2:
+                    NoteVoicePar[nvoice].FMEnabled = RING_MOD;
+                    break;
+                case 3:
+                    NoteVoicePar[nvoice].FMEnabled = PHASE_MOD;
+                    break;
+                case 4:
+                    NoteVoicePar[nvoice].FMEnabled = FREQ_MOD;
+                    break;
+                case 5:
+                    NoteVoicePar[nvoice].FMEnabled = PW_MOD;
+                    break;
+                default:
+                    NoteVoicePar[nvoice].FMEnabled = NONE;
+            }
 
         NoteVoicePar[nvoice].FMVoice = pars.VoicePar[nvoice].PFMVoice;
         NoteVoicePar[nvoice].FMFreqEnvelope = NULL;
         NoteVoicePar[nvoice].FMAmpEnvelope  = NULL;
+        NoteVoicePar[nvoice].FMFreqFixed  = pars.VoicePar[nvoice].PFMFixedFreq;
+
 
         //Compute the Voice's modulator volume (incl. damping)
         float fmvoldamp = powf(440.0f / getvoicebasefreq(
@@ -344,6 +423,7 @@ ADnote::ADnote(ADnoteParameters *pars_, SynthParams &spars)
                                - 1.0f);
         switch(NoteVoicePar[nvoice].FMEnabled) {
             case PHASE_MOD:
+            case PW_MOD:
                 fmvoldamp =
                     powf(440.0f / getvoicebasefreq(
                              nvoice), pars.VoicePar[nvoice].PFMVolumeDamp
@@ -357,8 +437,6 @@ ADnote::ADnote(ADnoteParameters *pars_, SynthParams &spars)
                     (expf(pars.VoicePar[nvoice].PFMVolume / 127.0f
                           * FM_AMP_MULTIPLIER) - 1.0f) * fmvoldamp * 4.0f;
                 break;
-            //    case PITCH_MOD:NoteVoicePar[nvoice].FMVolume=(pars.VoicePar[nvoice].PFMVolume/127.0f*8.0f)*fmvoldamp;//???????????
-            //	          break;
             default:
                 if(fmvoldamp > 1.0f)
                     fmvoldamp = 1.0f;
@@ -380,7 +458,7 @@ ADnote::ADnote(ADnoteParameters *pars_, SynthParams &spars)
         NoteVoicePar[nvoice].DelayTicks =
             (int)((expf(pars.VoicePar[nvoice].PDelay / 127.0f
                         * logf(50.0f))
-                   - 1.0f) / synth->buffersize_f / 10.0f * synth->samplerate_f);
+                   - 1.0f) / synth.buffersize_f / 10.0f * synth.samplerate_f);
     }
 
     max_unison = 1;
@@ -391,11 +469,19 @@ ADnote::ADnote(ADnoteParameters *pars_, SynthParams &spars)
 
     tmpwave_unison = memory.valloc<float*>(max_unison);
     for(int k = 0; k < max_unison; ++k) {
-        tmpwave_unison[k] = memory.valloc<float>(synth->buffersize);
-        memset(tmpwave_unison[k], 0, synth->bufferbytes);
+        tmpwave_unison[k] = memory.valloc<float>(synth.buffersize);
+        memset(tmpwave_unison[k], 0, synth.bufferbytes);
     }
 
     initparameters();
+    memory.endTransaction();
+}
+
+SynthNote *ADnote::cloneLegato(void)
+{
+    SynthParams sp{memory, ctl, synth, time, legato.param.freq, velocity, 
+                   (bool)portamento, legato.param.midinote, true};
+    return memory.alloc<ADnote>(&pars, sp);
 }
 
 // ADlegatonote: This function is (mostly) a copy of ADnote(...) and
@@ -490,13 +576,18 @@ void ADnote::legatonote(LegatoParams lpars)
 
         //I store the first elments to the last position for speedups
         for(int i = 0; i < OSCIL_SMP_EXTRA_SAMPLES; ++i)
-            NoteVoicePar[nvoice].OscilSmp[synth->oscilsize
+            NoteVoicePar[nvoice].OscilSmp[synth.oscilsize
                                           + i] =
                 NoteVoicePar[nvoice].OscilSmp[i];
 
 
         NoteVoicePar[nvoice].FilterCenterPitch =
-            pars.VoicePar[nvoice].VoiceFilter->getfreq();
+            pars.VoicePar[nvoice].VoiceFilter->getfreq()
+            + pars.VoicePar[nvoice].PFilterVelocityScale
+            / 127.0f * 6.0f       //velocity sensing
+            * (VelF(velocity,
+                    pars.VoicePar[nvoice].PFilterVelocityScaleFunction) - 1);
+
         NoteVoicePar[nvoice].filterbypass =
             pars.VoicePar[nvoice].Pfilterbypass;
 
@@ -510,6 +601,7 @@ void ADnote::legatonote(LegatoParams lpars)
 
         switch(NoteVoicePar[nvoice].FMEnabled) {
             case PHASE_MOD:
+            case PW_MOD:
                 fmvoldamp =
                     powf(440.0f / getvoicebasefreq(
                              nvoice), pars.VoicePar[nvoice].PFMVolumeDamp
@@ -523,8 +615,6 @@ void ADnote::legatonote(LegatoParams lpars)
                     (expf(pars.VoicePar[nvoice].PFMVolume / 127.0f
                           * FM_AMP_MULTIPLIER) - 1.0f) * fmvoldamp * 4.0f;
                 break;
-            //    case PITCH_MOD:NoteVoicePar[nvoice].FMVolume=(pars.VoicePar[nvoice].PFMVolume/127.0f*8.0f)*fmvoldamp;//???????????
-            //	          break;
             default:
                 if(fmvoldamp > 1.0f)
                     fmvoldamp = 1.0f;
@@ -541,7 +631,7 @@ void ADnote::legatonote(LegatoParams lpars)
         NoteVoicePar[nvoice].DelayTicks =
             (int)((expf(pars.VoicePar[nvoice].PDelay / 127.0f
                         * logf(50.0f))
-                   - 1.0f) / synth->buffersize_f / 10.0f * synth->samplerate_f);
+                   - 1.0f) / synth.buffersize_f / 10.0f * synth.samplerate_f);
     }
 
     ///    initparameters();
@@ -623,7 +713,7 @@ void ADnote::legatonote(LegatoParams lpars)
                 pars.VoicePar[vc].FMSmp->newrandseed(prng());
 
             for(int i = 0; i < OSCIL_SMP_EXTRA_SAMPLES; ++i)
-                NoteVoicePar[nvoice].FMSmp[synth->oscilsize + i] =
+                NoteVoicePar[nvoice].FMSmp[synth.oscilsize + i] =
                     NoteVoicePar[nvoice].FMSmp[i];
         }
 
@@ -667,7 +757,7 @@ void ADnote::KillVoice(int nvoice)
     memory.devalloc(unison_vibratto[nvoice].step);
     memory.devalloc(unison_vibratto[nvoice].position);
 
-    NoteVoicePar[nvoice].kill(memory);
+    NoteVoicePar[nvoice].kill(memory, synth);
 }
 
 /*
@@ -711,7 +801,8 @@ void ADnote::initparameters()
     //ADnoteParameters &pars = *partparams;
 
     // Global Parameters
-    NoteGlobalPar.initparameters(pars.GlobalPar,
+    NoteGlobalPar.initparameters(pars.GlobalPar, synth,
+                                 time,
                                  memory, basefreq, velocity,
                                  stereo);
 
@@ -748,34 +839,36 @@ void ADnote::initparameters()
 
         newamplitude[nvoice] = 1.0f;
         if(param.PAmpEnvelopeEnabled) {
-            vce.AmpEnvelope = memory.alloc<Envelope>(*param.AmpEnvelope, basefreq);
+            vce.AmpEnvelope = memory.alloc<Envelope>(*param.AmpEnvelope, basefreq, synth.dt());
             vce.AmpEnvelope->envout_dB(); //discard the first envelope sample
             newamplitude[nvoice] *= vce.AmpEnvelope->envout_dB();
         }
 
         if(param.PAmpLfoEnabled) {
-            vce.AmpLfo = memory.alloc<LFO>(*param.AmpLfo, basefreq);
+            vce.AmpLfo = memory.alloc<LFO>(*param.AmpLfo, basefreq, time);
             newamplitude[nvoice] *= vce.AmpLfo->amplfoout();
         }
 
         /* Voice Frequency Parameters Init */
         if(param.PFreqEnvelopeEnabled)
-            vce.FreqEnvelope = memory.alloc<Envelope>(*param.FreqEnvelope, basefreq);
+            vce.FreqEnvelope = memory.alloc<Envelope>(*param.FreqEnvelope, basefreq, synth.dt());
 
         if(param.PFreqLfoEnabled)
-            vce.FreqLfo = memory.alloc<LFO>(*param.FreqLfo, basefreq);
+            vce.FreqLfo = memory.alloc<LFO>(*param.FreqLfo, basefreq, time);
 
         /* Voice Filter Parameters Init */
         if(param.PFilterEnabled != 0) {
-            vce.VoiceFilterL = Filter::generate(memory, param.VoiceFilter);
-            vce.VoiceFilterR = Filter::generate(memory, param.VoiceFilter);
+            vce.VoiceFilterL = Filter::generate(memory, param.VoiceFilter,
+                    synth.samplerate, synth.buffersize);
+            vce.VoiceFilterR = Filter::generate(memory, param.VoiceFilter,
+                    synth.samplerate, synth.buffersize);
         }
 
         if(param.PFilterEnvelopeEnabled)
-            vce.FilterEnvelope = memory.alloc<Envelope>(*param.FilterEnvelope, basefreq);
+            vce.FilterEnvelope = memory.alloc<Envelope>(*param.FilterEnvelope, basefreq, synth.dt());
 
         if(param.PFilterLfoEnabled)
-            vce.FilterLfo = memory.alloc<LFO>(*param.FilterLfo, basefreq);
+            vce.FilterLfo = memory.alloc<LFO>(*param.FilterLfo, basefreq, time);
 
         vce.FilterFreqTracking =
             param.VoiceFilter->getfreqtracking(basefreq);
@@ -783,7 +876,7 @@ void ADnote::initparameters()
         /* Voice Modulation Parameters Init */
         if((vce.FMEnabled != NONE) && (vce.FMVoice < 0)) {
             param.FMSmp->newrandseed(prng());
-            vce.FMSmp = memory.valloc<float>(synth->oscilsize + OSCIL_SMP_EXTRA_SAMPLES);
+            vce.FMSmp = memory.valloc<float>(synth.oscilsize + OSCIL_SMP_EXTRA_SAMPLES);
 
             //Perform Anti-aliasing only on MORPH or RING MODULATION
 
@@ -804,28 +897,28 @@ void ADnote::initparameters()
                 oscposhiFM[nvoice][k] = (oscposhi[nvoice][k]
                                          + pars.VoicePar[vc].FMSmp->get(
                                              vce.FMSmp, tmp))
-                                        % synth->oscilsize;
+                                        % synth.oscilsize;
 
             for(int i = 0; i < OSCIL_SMP_EXTRA_SAMPLES; ++i)
-                vce.FMSmp[synth->oscilsize + i] = vce.FMSmp[i];
+                vce.FMSmp[synth.oscilsize + i] = vce.FMSmp[i];
             int oscposhiFM_add =
                 (int)((param.PFMoscilphase
-                       - 64.0f) / 128.0f * synth->oscilsize
-                      + synth->oscilsize * 4);
+                       - 64.0f) / 128.0f * synth.oscilsize
+                      + synth.oscilsize * 4);
             for(int k = 0; k < unison_size[nvoice]; ++k) {
                 oscposhiFM[nvoice][k] += oscposhiFM_add;
-                oscposhiFM[nvoice][k] %= synth->oscilsize;
+                oscposhiFM[nvoice][k] %= synth.oscilsize;
             }
         }
 
         if(param.PFMFreqEnvelopeEnabled)
-            vce.FMFreqEnvelope = memory.alloc<Envelope>(*param.FMFreqEnvelope, basefreq);
+            vce.FMFreqEnvelope = memory.alloc<Envelope>(*param.FMFreqEnvelope, basefreq, synth.dt());
 
         FMnewamplitude[nvoice] = vce.FMVolume * ctl.fmamp.relamp;
 
         if(param.PFMAmpEnvelopeEnabled ) {
             vce.FMAmpEnvelope =
-                memory.alloc<Envelope>(*param.FMAmpEnvelope, basefreq);
+                memory.alloc<Envelope>(*param.FMAmpEnvelope, basefreq, synth.dt());
             FMnewamplitude[nvoice] *= vce.FMAmpEnvelope->envout_dB();
         }
     }
@@ -836,12 +929,12 @@ void ADnote::initparameters()
         for(int i = nvoice + 1; i < NUM_VOICES; ++i)
             if((NoteVoicePar[i].FMVoice == nvoice) && (tmp[i] == 0)) {
                 NoteVoicePar[nvoice].VoiceOut =
-                    memory.valloc<float>(synth->buffersize);
+                    memory.valloc<float>(synth.buffersize);
                 tmp[i] = 1;
             }
 
         if(NoteVoicePar[nvoice].VoiceOut)
-            memset(NoteVoicePar[nvoice].VoiceOut, 0, synth->bufferbytes);
+            memset(NoteVoicePar[nvoice].VoiceOut, 0, synth.bufferbytes);
     }
 }
 
@@ -888,9 +981,9 @@ void ADnote::setfreq(int nvoice, float in_freq)
 {
     for(int k = 0; k < unison_size[nvoice]; ++k) {
         float freq  = fabs(in_freq) * unison_freq_rap[nvoice][k];
-        float speed = freq * synth->oscilsize_f / synth->samplerate_f;
-        if(speed > synth->oscilsize_f)
-            speed = synth->oscilsize_f;
+        float speed = freq * synth.oscilsize_f / synth.samplerate_f;
+        if(speed > synth.oscilsize_f)
+            speed = synth.oscilsize_f;
 
         F2I(speed, oscfreqhi[nvoice][k]);
         oscfreqlo[nvoice][k] = speed - floor(speed);
@@ -904,9 +997,9 @@ void ADnote::setfreqFM(int nvoice, float in_freq)
 {
     for(int k = 0; k < unison_size[nvoice]; ++k) {
         float freq  = fabs(in_freq) * unison_freq_rap[nvoice][k];
-        float speed = freq * synth->oscilsize_f / synth->samplerate_f;
-        if(speed > synth->samplerate_f)
-            speed = synth->samplerate_f;
+        float speed = freq * synth.oscilsize_f / synth.samplerate_f;
+        if(speed > synth.samplerate_f)
+            speed = synth.samplerate_f;
 
         F2I(speed, oscfreqhiFM[nvoice][k]);
         oscfreqloFM[nvoice][k] = speed - floor(speed);
@@ -1045,20 +1138,28 @@ void ADnote::computecurrentparameters()
                               / 100.0f;
             voicefreq = getvoicebasefreq(nvoice)
                         * powf(2, (voicepitch + globalpitch) / 12.0f);                //Hz frequency
-            voicefreq *= ctl.pitchwheel.relfreq; //change the frequency by the controller
-            setfreq(nvoice, voicefreq * portamentofreqrap);
+            voicefreq *=
+                powf(ctl.pitchwheel.relfreq, NoteVoicePar[nvoice].BendAdjust); //change the frequency by the controller
+            setfreq(nvoice, voicefreq * portamentofreqrap + NoteVoicePar[nvoice].OffsetHz);
 
             /***************/
             /*  Modulator */
             /***************/
+
+
             if(NoteVoicePar[nvoice].FMEnabled != NONE) {
                 FMrelativepitch = NoteVoicePar[nvoice].FMDetune / 100.0f;
                 if(NoteVoicePar[nvoice].FMFreqEnvelope)
                     FMrelativepitch +=
                         NoteVoicePar[nvoice].FMFreqEnvelope->envout() / 100;
-                FMfreq =
-                    powf(2.0f, FMrelativepitch
-                         / 12.0f) * voicefreq * portamentofreqrap;
+                if (NoteVoicePar[nvoice].FMFreqFixed)
+                    FMfreq =
+                        powf(2.0f, FMrelativepitch
+                             / 12.0f) * 440.0f;
+                else
+                    FMfreq =
+                           powf(2.0f, FMrelativepitch
+                                / 12.0f) * voicefreq * portamentofreqrap;
                 setfreqFM(nvoice, FMfreq);
 
                 FMoldamplitude[nvoice] = FMnewamplitude[nvoice];
@@ -1070,7 +1171,6 @@ void ADnote::computecurrentparameters()
             }
         }
     }
-    time += synth->buffersize_f / synth->samplerate_f;
 }
 
 
@@ -1080,18 +1180,19 @@ void ADnote::computecurrentparameters()
 inline void ADnote::fadein(float *smps) const
 {
     int zerocrossings = 0;
-    for(int i = 1; i < synth->buffersize; ++i)
+    for(int i = 1; i < synth.buffersize; ++i)
         if((smps[i - 1] < 0.0f) && (smps[i] > 0.0f))
             zerocrossings++;  //this is only the possitive crossings
 
-    float tmp = (synth->buffersize_f - 1.0f) / (zerocrossings + 1) / 3.0f;
+    float tmp = (synth.buffersize_f - 1.0f) / (zerocrossings + 1) / 3.0f;
     if(tmp < 8.0f)
         tmp = 8.0f;
+    tmp *= NoteGlobalPar.Fadein_adjustment;
 
     int n;
     F2I(tmp, n); //how many samples is the fade-in
-    if(n > synth->buffersize)
-        n = synth->buffersize;
+    if(n > synth.buffersize)
+        n = synth.buffersize;
     for(int i = 0; i < n; ++i) { //fade-in
         float tmp = 0.5f - cosf((float)i / (float) n * PI) * 0.5f;
         smps[i] *= tmp;
@@ -1125,12 +1226,12 @@ inline void ADnote::ComputeVoiceOscillator_LinearInterpolation(int nvoice)
         float *smps   = NoteVoicePar[nvoice].OscilSmp;
         float *tw     = tmpwave_unison[k];
         assert(oscfreqlo[nvoice][k] < 1.0f);
-        for(int i = 0; i < synth->buffersize; ++i) {
+        for(int i = 0; i < synth.buffersize; ++i) {
             tw[i]  = (smps[poshi] * ((1<<24) - poslo) + smps[poshi + 1] * poslo)/(1.0f*(1<<24));
             poslo += freqlo;
             poshi += freqhi + (poslo>>24);
             poslo &= 0xffffff;
-            poshi &= synth->oscilsize - 1;
+            poshi &= synth.oscilsize - 1;
         }
         oscposhi[nvoice][k] = poshi;
         oscposlo[nvoice][k] = poslo/(1.0f*(1<<24));
@@ -1142,7 +1243,7 @@ inline void ADnote::ComputeVoiceOscillator_LinearInterpolation(int nvoice)
 /*
  * Computes the Oscillator (Without Modulation) - CubicInterpolation
  *
- The differences from the Linear are to little to deserve to be used. This is because I am using a large synth->oscilsize (>512)
+ The differences from the Linear are to little to deserve to be used. This is because I am using a large synth.oscilsize (>512)
 inline void ADnote::ComputeVoiceOscillator_CubicInterpolation(int nvoice){
     int i,poshi;
     float poslo;
@@ -1151,7 +1252,7 @@ inline void ADnote::ComputeVoiceOscillator_CubicInterpolation(int nvoice){
     poslo=oscposlo[nvoice];
     float *smps=NoteVoicePar[nvoice].OscilSmp;
     float xm1,x0,x1,x2,a,b,c;
-    for (i=0;i<synth->buffersize;i++){
+    for (i=0;i<synth.buffersize;i++){
     xm1=smps[poshi];
     x0=smps[poshi+1];
     x1=smps[poshi+2];
@@ -1168,7 +1269,7 @@ inline void ADnote::ComputeVoiceOscillator_CubicInterpolation(int nvoice){
         poshi++;
     };
         poshi+=oscfreqhi[nvoice];
-        poshi&=synth->oscilsize-1;
+        poshi&=synth.oscilsize-1;
     };
     oscposhi[nvoice]=poshi;
     oscposlo[nvoice]=poslo;
@@ -1190,11 +1291,11 @@ inline void ADnote::ComputeVoiceOscillatorMorph(int nvoice)
         int FMVoice = NoteVoicePar[nvoice].FMVoice;
         for(int k = 0; k < unison_size[nvoice]; ++k) {
             float *tw = tmpwave_unison[k];
-            for(int i = 0; i < synth->buffersize; ++i) {
+            for(int i = 0; i < synth.buffersize; ++i) {
                 float amp = INTERPOLATE_AMPLITUDE(FMoldamplitude[nvoice],
                                             FMnewamplitude[nvoice],
                                             i,
-                                            synth->buffersize);
+                                            synth.buffersize);
                 tw[i] = tw[i]
                     * (1.0f - amp) + amp * NoteVoicePar[FMVoice].VoiceOut[i];
             }
@@ -1208,11 +1309,11 @@ inline void ADnote::ComputeVoiceOscillatorMorph(int nvoice)
             float  freqloFM = oscfreqloFM[nvoice][k];
             float *tw = tmpwave_unison[k];
 
-            for(int i = 0; i < synth->buffersize; ++i) {
+            for(int i = 0; i < synth.buffersize; ++i) {
                 float amp = INTERPOLATE_AMPLITUDE(FMoldamplitude[nvoice],
                                             FMnewamplitude[nvoice],
                                             i,
-                                            synth->buffersize);
+                                            synth.buffersize);
                 tw[i] = tw[i] * (1.0f - amp) + amp
                         * (NoteVoicePar[nvoice].FMSmp[poshiFM] * (1 - posloFM)
                            + NoteVoicePar[nvoice].FMSmp[poshiFM + 1] * posloFM);
@@ -1222,7 +1323,7 @@ inline void ADnote::ComputeVoiceOscillatorMorph(int nvoice)
                     poshiFM++;
                 }
                 poshiFM += freqhiFM;
-                poshiFM &= synth->oscilsize - 1;
+                poshiFM &= synth.oscilsize - 1;
             }
             oscposhiFM[nvoice][k] = poshiFM;
             oscposloFM[nvoice][k] = posloFM;
@@ -1243,11 +1344,11 @@ inline void ADnote::ComputeVoiceOscillatorRingModulation(int nvoice)
         // if I use VoiceOut[] as modullator
         for(int k = 0; k < unison_size[nvoice]; ++k) {
             float *tw = tmpwave_unison[k];
-            for(int i = 0; i < synth->buffersize; ++i) {
+            for(int i = 0; i < synth.buffersize; ++i) {
                 float amp = INTERPOLATE_AMPLITUDE(FMoldamplitude[nvoice],
                                             FMnewamplitude[nvoice],
                                             i,
-                                            synth->buffersize);
+                                            synth.buffersize);
                 int FMVoice = NoteVoicePar[nvoice].FMVoice;
                 tw[i] *= (1.0f - amp) + amp * NoteVoicePar[FMVoice].VoiceOut[i];
             }
@@ -1260,11 +1361,11 @@ inline void ADnote::ComputeVoiceOscillatorRingModulation(int nvoice)
             float  freqloFM = oscfreqloFM[nvoice][k];
             float *tw = tmpwave_unison[k];
 
-            for(int i = 0; i < synth->buffersize; ++i) {
+            for(int i = 0; i < synth.buffersize; ++i) {
                 float amp = INTERPOLATE_AMPLITUDE(FMoldamplitude[nvoice],
                                             FMnewamplitude[nvoice],
                                             i,
-                                            synth->buffersize);
+                                            synth.buffersize);
                 tw[i] *= (NoteVoicePar[nvoice].FMSmp[poshiFM] * (1.0f - posloFM)
                           + NoteVoicePar[nvoice].FMSmp[poshiFM
                                                        + 1] * posloFM) * amp
@@ -1275,7 +1376,7 @@ inline void ADnote::ComputeVoiceOscillatorRingModulation(int nvoice)
                     poshiFM++;
                 }
                 poshiFM += freqhiFM;
-                poshiFM &= synth->oscilsize - 1;
+                poshiFM &= synth.oscilsize - 1;
             }
             oscposhiFM[nvoice][k] = poshiFM;
             oscposloFM[nvoice][k] = posloFM;
@@ -1293,7 +1394,11 @@ inline void ADnote::ComputeVoiceOscillatorFrequencyModulation(int nvoice,
         for(int k = 0; k < unison_size[nvoice]; ++k) {
             float *tw = tmpwave_unison[k];
             const float *smps = NoteVoicePar[NoteVoicePar[nvoice].FMVoice].VoiceOut;
-            memcpy(tw, smps, synth->bufferbytes);
+            if (FMmode == PW_MOD && (k & 1))
+                for (int i = 0; i < synth.buffersize; ++i)
+                    tw[i] = -smps[i];
+            else
+                memcpy(tw, smps, synth.bufferbytes);
         }
     } else {
         //Compute the modulator and store it in tmpwave_unison[][]
@@ -1305,16 +1410,19 @@ inline void ADnote::ComputeVoiceOscillatorFrequencyModulation(int nvoice,
             float *tw = tmpwave_unison[k];
             const float *smps = NoteVoicePar[nvoice].FMSmp;
 
-            for(int i = 0; i < synth->buffersize; ++i) {
+            for(int i = 0; i < synth.buffersize; ++i) {
                 tw[i] = (smps[poshiFM] * ((1<<24) - posloFM)
-                     + smps[poshiFM + 1] * posloFM) / (1.0f*(1<<24));
+                         + smps[poshiFM + 1] * posloFM) / (1.0f*(1<<24));
+                if (FMmode == PW_MOD && (k & 1))
+                    tw[i] = -tw[i];
+
                 posloFM += freqloFM;
                 if(posloFM >= (1<<24)) {
                     posloFM &= 0xffffff;//fmod(posloFM, 1.0f);
                     poshiFM++;
                 }
                 poshiFM += freqhiFM;
-                poshiFM &= synth->oscilsize - 1;
+                poshiFM &= synth.oscilsize - 1;
             }
             oscposhiFM[nvoice][k] = poshiFM;
             oscposloFM[nvoice][k] = posloFM/((1<<24)*1.0f);
@@ -1325,40 +1433,40 @@ inline void ADnote::ComputeVoiceOscillatorFrequencyModulation(int nvoice,
                                  FMnewamplitude[nvoice])) {
         for(int k = 0; k < unison_size[nvoice]; ++k) {
             float *tw = tmpwave_unison[k];
-            for(int i = 0; i < synth->buffersize; ++i)
+            for(int i = 0; i < synth.buffersize; ++i)
                 tw[i] *= INTERPOLATE_AMPLITUDE(FMoldamplitude[nvoice],
                                                FMnewamplitude[nvoice],
                                                i,
-                                               synth->buffersize);
+                                               synth.buffersize);
         }
     } else {
         for(int k = 0; k < unison_size[nvoice]; ++k) {
             float *tw = tmpwave_unison[k];
-            for(int i = 0; i < synth->buffersize; ++i)
+            for(int i = 0; i < synth.buffersize; ++i)
                 tw[i] *= FMnewamplitude[nvoice];
         }
     }
 
 
     //normalize: makes all sample-rates, oscil_sizes to produce same sound
-    if(FMmode != 0) { //Frequency modulation
-        const float normalize = synth->oscilsize_f / 262144.0f * 44100.0f
-                          / synth->samplerate_f;
+    if(FMmode == FREQ_MOD) { //Frequency modulation
+        const float normalize = synth.oscilsize_f / 262144.0f * 44100.0f
+                          / synth.samplerate_f;
         for(int k = 0; k < unison_size[nvoice]; ++k) {
             float *tw    = tmpwave_unison[k];
             float  fmold = FMoldsmp[nvoice][k];
-            for(int i = 0; i < synth->buffersize; ++i) {
-                fmold = fmod(fmold + tw[i] * normalize, synth->oscilsize);
+            for(int i = 0; i < synth.buffersize; ++i) {
+                fmold = fmod(fmold + tw[i] * normalize, synth.oscilsize);
                 tw[i] = fmold;
             }
             FMoldsmp[nvoice][k] = fmold;
         }
     }
-    else {  //Phase modulation
-        const float normalize = synth->oscilsize_f / 262144.0f;
+    else {  //Phase or PWM modulation
+        const float normalize = synth.oscilsize_f / 262144.0f;
         for(int k = 0; k < unison_size[nvoice]; ++k) {
             float *tw = tmpwave_unison[k];
-            for(int i = 0; i < synth->buffersize; ++i)
+            for(int i = 0; i < synth.buffersize; ++i)
                 tw[i] *= normalize;
         }
     }
@@ -1372,7 +1480,7 @@ inline void ADnote::ComputeVoiceOscillatorFrequencyModulation(int nvoice,
         int    freqhi = oscfreqhi[nvoice][k];
         int    freqlo = oscfreqlo[nvoice][k] * (1<<24);
 
-        for(int i = 0; i < synth->buffersize; ++i) {
+        for(int i = 0; i < synth.buffersize; ++i) {
             int FMmodfreqhi = 0;
             F2I(tw[i], FMmodfreqhi);
             float FMmodfreqlo = tw[i]-FMmodfreqhi;//fmod(tw[i] /*+ 0.0000000001f*/, 1.0f);
@@ -1382,12 +1490,14 @@ inline void ADnote::ComputeVoiceOscillatorFrequencyModulation(int nvoice,
             //carrier
             int carposhi = poshi + FMmodfreqhi;
             int carposlo = poslo + FMmodfreqlo;
+            if (FMmode == PW_MOD && (k & 1))
+                carposhi += NoteVoicePar[nvoice].phase_offset;
 
             if(carposlo >= (1<<24)) {
                 carposhi++;
                 carposlo &= 0xffffff;//fmod(carposlo, 1.0f);
             }
-            carposhi &= (synth->oscilsize - 1);
+            carposhi &= (synth.oscilsize - 1);
 
             tw[i] = (smps[carposhi] * ((1<<24) - carposlo)
                     + smps[carposhi + 1] * carposlo)/(1.0f*(1<<24));
@@ -1399,7 +1509,7 @@ inline void ADnote::ComputeVoiceOscillatorFrequencyModulation(int nvoice,
             }
 
             poshi += freqhi;
-            poshi &= synth->oscilsize - 1;
+            poshi &= synth.oscilsize - 1;
         }
         oscposhi[nvoice][k] = poshi;
         oscposlo[nvoice][k] = (poslo)/((1<<24)*1.0f);
@@ -1407,21 +1517,34 @@ inline void ADnote::ComputeVoiceOscillatorFrequencyModulation(int nvoice,
 }
 
 
-/*Calculeaza Oscilatorul cu PITCH MODULATION*/
-inline void ADnote::ComputeVoiceOscillatorPitchModulation(int /*nvoice*/)
-{
-//TODO
-}
-
 /*
  * Computes the Noise
  */
-inline void ADnote::ComputeVoiceNoise(int nvoice)
+inline void ADnote::ComputeVoiceWhiteNoise(int nvoice)
 {
     for(int k = 0; k < unison_size[nvoice]; ++k) {
         float *tw = tmpwave_unison[k];
-        for(int i = 0; i < synth->buffersize; ++i)
+        for(int i = 0; i < synth.buffersize; ++i)
             tw[i] = RND * 2.0f - 1.0f;
+    }
+}
+
+inline void ADnote::ComputeVoicePinkNoise(int nvoice)
+{
+    for(int k = 0; k < unison_size[nvoice]; ++k) {
+        float *tw = tmpwave_unison[k];
+        float *f = &pinking[nvoice][k > 0 ? 7 : 0];
+        for(int i = 0; i < synth.buffersize; ++i) {
+	    float white = (RND-0.5)/4.0;
+	    f[0] = 0.99886*f[0]+white*0.0555179;
+	    f[1] = 0.99332*f[1]+white*0.0750759;
+	    f[2] = 0.96900*f[2]+white*0.1538520;
+	    f[3] = 0.86650*f[3]+white*0.3104856;
+	    f[4] = 0.55000*f[4]+white*0.5329522;
+	    f[5] = -0.7616*f[5]-white*0.0168980;
+	    tw[i] = f[0]+f[1]+f[2]+f[3]+f[4]+f[5]+f[6]+white*0.5362;
+	    f[6] = white*0.115926;
+        }
     }
 }
 
@@ -1433,56 +1556,69 @@ inline void ADnote::ComputeVoiceNoise(int nvoice)
  */
 int ADnote::noteout(float *outl, float *outr)
 {
-    memcpy(outl, denormalkillbuf, synth->bufferbytes);
-    memcpy(outr, denormalkillbuf, synth->bufferbytes);
+    memcpy(outl, synth.denormalkillbuf, synth.bufferbytes);
+    memcpy(outr, synth.denormalkillbuf, synth.bufferbytes);
 
     if(NoteEnabled == OFF)
         return 0;
 
-    memset(bypassl, 0, synth->bufferbytes);
-    memset(bypassr, 0, synth->bufferbytes);
+    memset(bypassl, 0, synth.bufferbytes);
+    memset(bypassr, 0, synth.bufferbytes);
     computecurrentparameters();
 
     for(unsigned nvoice = 0; nvoice < NUM_VOICES; ++nvoice) {
         if((NoteVoicePar[nvoice].Enabled != ON)
            || (NoteVoicePar[nvoice].DelayTicks > 0))
             continue;
-        if(NoteVoicePar[nvoice].noisetype == 0) //voice mode=sound
-            switch(NoteVoicePar[nvoice].FMEnabled) {
-                case MORPH:
-                    ComputeVoiceOscillatorMorph(nvoice);
-                    break;
-                case RING_MOD:
-                    ComputeVoiceOscillatorRingModulation(nvoice);
-                    break;
-                case PHASE_MOD:
-                    ComputeVoiceOscillatorFrequencyModulation(nvoice, 0);
-                    break;
-                case FREQ_MOD:
-                    ComputeVoiceOscillatorFrequencyModulation(nvoice, 1);
-                    break;
-                //case PITCH_MOD:ComputeVoiceOscillatorPitchModulation(nvoice);break;
-                default:
-                    ComputeVoiceOscillator_LinearInterpolation(nvoice);
-                    //if (config.cfg.Interpolation) ComputeVoiceOscillator_CubicInterpolation(nvoice);
-            }
-        else
-            ComputeVoiceNoise(nvoice);
+        switch (NoteVoicePar[nvoice].noisetype) {
+            case 0: //voice mode=sound
+                switch(NoteVoicePar[nvoice].FMEnabled) {
+                    case MORPH:
+                        ComputeVoiceOscillatorMorph(nvoice);
+                        break;
+                    case RING_MOD:
+                        ComputeVoiceOscillatorRingModulation(nvoice);
+                        break;
+                    case FREQ_MOD:
+                    case PHASE_MOD:
+                    case PW_MOD:
+                        ComputeVoiceOscillatorFrequencyModulation(nvoice,
+                                                                  NoteVoicePar[nvoice].FMEnabled);
+                        break;
+                    default:
+                        ComputeVoiceOscillator_LinearInterpolation(nvoice);
+                        //if (config.cfg.Interpolation) ComputeVoiceOscillator_CubicInterpolation(nvoice);
+                }
+                break;
+            case 1:
+                ComputeVoiceWhiteNoise(nvoice);
+                break;
+            default:
+                ComputeVoicePinkNoise(nvoice);
+                break;
+        }
         // Voice Processing
 
 
         //mix subvoices into voice
-        memset(tmpwavel, 0, synth->bufferbytes);
+        memset(tmpwavel, 0, synth.bufferbytes);
         if(stereo)
-            memset(tmpwaver, 0, synth->bufferbytes);
+            memset(tmpwaver, 0, synth.bufferbytes);
         for(int k = 0; k < unison_size[nvoice]; ++k) {
             float *tw = tmpwave_unison[k];
             if(stereo) {
                 float stereo_pos = 0;
-                if(unison_size[nvoice] > 1)
+                bool is_pwm = NoteVoicePar[nvoice].FMEnabled == PW_MOD;
+                if (is_pwm) {
+                    if(unison_size[nvoice] > 2)
+                        stereo_pos = k/2
+                            / (float)(unison_size[nvoice]/2
+                                      - 1) * 2.0f - 1.0f;
+                } else if(unison_size[nvoice] > 1) {
                     stereo_pos = k
-                                 / (float)(unison_size[nvoice]
-                                           - 1) * 2.0f - 1.0f;
+                        / (float)(unison_size[nvoice]
+                                  - 1) * 2.0f - 1.0f;
+                }
                 float stereo_spread = unison_stereo_spread[nvoice] * 2.0f; //between 0 and 2.0f
                 if(stereo_spread > 1.0f) {
                     float stereo_pos_1 = (stereo_pos >= 0.0f) ? 1.0f : -1.0f;
@@ -1494,7 +1630,8 @@ int ADnote::noteout(float *outl, float *outr)
                 else
                     stereo_pos *= stereo_spread;
 
-                if(unison_size[nvoice] == 1)
+                if(unison_size[nvoice] == 1 ||
+                   (is_pwm && unison_size[nvoice] == 2))
                     stereo_pos = 0.0f;
                 float panning = (stereo_pos + 1.0f) * 0.5f;
 
@@ -1512,13 +1649,13 @@ int ADnote::noteout(float *outl, float *outr)
                     rvol = -rvol;
                 }
 
-                for(int i = 0; i < synth->buffersize; ++i)
+                for(int i = 0; i < synth.buffersize; ++i)
                     tmpwavel[i] += tw[i] * lvol;
-                for(int i = 0; i < synth->buffersize; ++i)
+                for(int i = 0; i < synth.buffersize; ++i)
                     tmpwaver[i] += tw[i] * rvol;
             }
             else
-                for(int i = 0; i < synth->buffersize; ++i)
+                for(int i = 0; i < synth.buffersize; ++i)
                     tmpwavel[i] += tw[i];
         }
 
@@ -1529,31 +1666,31 @@ int ADnote::noteout(float *outl, float *outr)
         float newam = newamplitude[nvoice] * unison_amplitude;
 
         if(ABOVE_AMPLITUDE_THRESHOLD(oldam, newam)) {
-            int rest = synth->buffersize;
+            int rest = synth.buffersize;
             //test if the amplitude if raising and the difference is high
             if((newam > oldam) && ((newam - oldam) > 0.25f)) {
                 rest = 10;
-                if(rest > synth->buffersize)
-                    rest = synth->buffersize;
-                for(int i = 0; i < synth->buffersize - rest; ++i)
+                if(rest > synth.buffersize)
+                    rest = synth.buffersize;
+                for(int i = 0; i < synth.buffersize - rest; ++i)
                     tmpwavel[i] *= oldam;
                 if(stereo)
-                    for(int i = 0; i < synth->buffersize - rest; ++i)
+                    for(int i = 0; i < synth.buffersize - rest; ++i)
                         tmpwaver[i] *= oldam;
             }
             // Amplitude interpolation
             for(int i = 0; i < rest; ++i) {
                 float amp = INTERPOLATE_AMPLITUDE(oldam, newam, i, rest);
-                tmpwavel[i + (synth->buffersize - rest)] *= amp;
+                tmpwavel[i + (synth.buffersize - rest)] *= amp;
                 if(stereo)
-                    tmpwaver[i + (synth->buffersize - rest)] *= amp;
+                    tmpwaver[i + (synth.buffersize - rest)] *= amp;
             }
         }
         else {
-            for(int i = 0; i < synth->buffersize; ++i)
+            for(int i = 0; i < synth.buffersize; ++i)
                 tmpwavel[i] *= newam;
             if(stereo)
-                for(int i = 0; i < synth->buffersize; ++i)
+                for(int i = 0; i < synth.buffersize; ++i)
                     tmpwaver[i] *= newam;
         }
 
@@ -1575,11 +1712,11 @@ int ADnote::noteout(float *outl, float *outr)
         //check if the amplitude envelope is finished, if yes, the voice will be fadeout
         if(NoteVoicePar[nvoice].AmpEnvelope)
             if(NoteVoicePar[nvoice].AmpEnvelope->finished()) {
-                for(int i = 0; i < synth->buffersize; ++i)
-                    tmpwavel[i] *= 1.0f - (float)i / synth->buffersize_f;
+                for(int i = 0; i < synth.buffersize; ++i)
+                    tmpwavel[i] *= 1.0f - (float)i / synth.buffersize_f;
                 if(stereo)
-                    for(int i = 0; i < synth->buffersize; ++i)
-                        tmpwaver[i] *= 1.0f - (float)i / synth->buffersize_f;
+                    for(int i = 0; i < synth.buffersize; ++i)
+                        tmpwaver[i] *= 1.0f - (float)i / synth.buffersize_f;
             }
         //the voice is killed later
 
@@ -1587,11 +1724,11 @@ int ADnote::noteout(float *outl, float *outr)
         // Put the ADnote samples in VoiceOut (without appling Global volume, because I wish to use this voice as a modullator)
         if(NoteVoicePar[nvoice].VoiceOut) {
             if(stereo)
-                for(int i = 0; i < synth->buffersize; ++i)
+                for(int i = 0; i < synth.buffersize; ++i)
                     NoteVoicePar[nvoice].VoiceOut[i] = tmpwavel[i]
                                                        + tmpwaver[i];
             else   //mono
-                for(int i = 0; i < synth->buffersize; ++i)
+                for(int i = 0; i < synth.buffersize; ++i)
                     NoteVoicePar[nvoice].VoiceOut[i] = tmpwavel[i];
         }
 
@@ -1599,19 +1736,19 @@ int ADnote::noteout(float *outl, float *outr)
         // Add the voice that do not bypass the filter to out
         if(NoteVoicePar[nvoice].filterbypass == 0) { //no bypass
             if(stereo)
-                for(int i = 0; i < synth->buffersize; ++i) { //stereo
+                for(int i = 0; i < synth.buffersize; ++i) { //stereo
                     outl[i] += tmpwavel[i] * NoteVoicePar[nvoice].Volume
                                * NoteVoicePar[nvoice].Panning * 2.0f;
                     outr[i] += tmpwaver[i] * NoteVoicePar[nvoice].Volume
                                * (1.0f - NoteVoicePar[nvoice].Panning) * 2.0f;
                 }
             else
-                for(int i = 0; i < synth->buffersize; ++i) //mono
+                for(int i = 0; i < synth.buffersize; ++i) //mono
                     outl[i] += tmpwavel[i] * NoteVoicePar[nvoice].Volume;
         }
         else {  //bypass the filter
             if(stereo)
-                for(int i = 0; i < synth->buffersize; ++i) { //stereo
+                for(int i = 0; i < synth.buffersize; ++i) { //stereo
                     bypassl[i] += tmpwavel[i] * NoteVoicePar[nvoice].Volume
                                   * NoteVoicePar[nvoice].Panning * 2.0f;
                     bypassr[i] += tmpwaver[i] * NoteVoicePar[nvoice].Volume
@@ -1619,7 +1756,7 @@ int ADnote::noteout(float *outl, float *outr)
                                      - NoteVoicePar[nvoice].Panning) * 2.0f;
                 }
             else
-                for(int i = 0; i < synth->buffersize; ++i) //mono
+                for(int i = 0; i < synth.buffersize; ++i) //mono
                     bypassl[i] += tmpwavel[i] * NoteVoicePar[nvoice].Volume;
         }
         // chech if there is necesary to proces the voice longer (if the Amplitude envelope isn't finished)
@@ -1633,36 +1770,36 @@ int ADnote::noteout(float *outl, float *outr)
     NoteGlobalPar.GlobalFilterL->filterout(&outl[0]);
 
     if(stereo == 0) { //set the right channel=left channel
-        memcpy(outr, outl, synth->bufferbytes);
-        memcpy(bypassr, bypassl, synth->bufferbytes);
+        memcpy(outr, outl, synth.bufferbytes);
+        memcpy(bypassr, bypassl, synth.bufferbytes);
     }
     else
         NoteGlobalPar.GlobalFilterR->filterout(&outr[0]);
 
-    for(int i = 0; i < synth->buffersize; ++i) {
+    for(int i = 0; i < synth.buffersize; ++i) {
         outl[i] += bypassl[i];
         outr[i] += bypassr[i];
     }
 
     if(ABOVE_AMPLITUDE_THRESHOLD(globaloldamplitude, globalnewamplitude))
         // Amplitude Interpolation
-        for(int i = 0; i < synth->buffersize; ++i) {
+        for(int i = 0; i < synth.buffersize; ++i) {
             float tmpvol = INTERPOLATE_AMPLITUDE(globaloldamplitude,
                                                  globalnewamplitude,
                                                  i,
-                                                 synth->buffersize);
+                                                 synth.buffersize);
             outl[i] *= tmpvol * NoteGlobalPar.Panning;
             outr[i] *= tmpvol * (1.0f - NoteGlobalPar.Panning);
         }
     else
-        for(int i = 0; i < synth->buffersize; ++i) {
+        for(int i = 0; i < synth.buffersize; ++i) {
             outl[i] *= globalnewamplitude * NoteGlobalPar.Panning;
             outr[i] *= globalnewamplitude * (1.0f - NoteGlobalPar.Panning);
         }
 
     //Apply the punch
     if(NoteGlobalPar.Punch.Enabled != 0)
-        for(int i = 0; i < synth->buffersize; ++i) {
+        for(int i = 0; i < synth.buffersize; ++i) {
             float punchamp = NoteGlobalPar.Punch.initialvalue
                              * NoteGlobalPar.Punch.t + 1.0f;
             outl[i] *= punchamp;
@@ -1682,8 +1819,8 @@ int ADnote::noteout(float *outl, float *outr)
     // Check if the global amplitude is finished.
     // If it does, disable the note
     if(NoteGlobalPar.AmpEnvelope->finished()) {
-        for(int i = 0; i < synth->buffersize; ++i) { //fade-out
-            float tmp = 1.0f - (float)i / synth->buffersize_f;
+        for(int i = 0; i < synth.buffersize; ++i) { //fade-out
+            float tmp = 1.0f - (float)i / synth.buffersize_f;
             outl[i] *= tmp;
             outr[i] *= tmp;
         }
@@ -1732,7 +1869,7 @@ void ADnote::Voice::releasekey()
         FMAmpEnvelope->releasekey();
 }
 
-void ADnote::Voice::kill(Allocator &memory)
+void ADnote::Voice::kill(Allocator &memory, const SYNTH_T &synth)
 {
     memory.devalloc(OscilSmp);
     memory.dealloc(FreqEnvelope);
@@ -1750,7 +1887,7 @@ void ADnote::Voice::kill(Allocator &memory)
         memory.devalloc(FMSmp);
 
     if(VoiceOut)
-        memset(VoiceOut, 0, synth->bufferbytes);
+        memset(VoiceOut, 0, synth.bufferbytes);
     //the buffer can't be safely deleted as it may be
     //an input to another voice
 
@@ -1770,27 +1907,31 @@ void ADnote::Global::kill(Allocator &memory)
 }
 
 void ADnote::Global::initparameters(const ADnoteGlobalParam &param,
+                                    const SYNTH_T &synth,
+                                    const AbsTime &time,
                                     class Allocator &memory,
                                     float basefreq, float velocity,
                                     bool stereo)
 {
-    FreqEnvelope = memory.alloc<Envelope>(*param.FreqEnvelope, basefreq);
-    FreqLfo      = memory.alloc<LFO>(*param.FreqLfo, basefreq);
+    FreqEnvelope = memory.alloc<Envelope>(*param.FreqEnvelope, basefreq, synth.dt());
+    FreqLfo      = memory.alloc<LFO>(*param.FreqLfo, basefreq, time);
 
-    AmpEnvelope = memory.alloc<Envelope>(*param.AmpEnvelope, basefreq);
-    AmpLfo      = memory.alloc<LFO>(*param.AmpLfo, basefreq);
+    AmpEnvelope = memory.alloc<Envelope>(*param.AmpEnvelope, basefreq, synth.dt());
+    AmpLfo      = memory.alloc<LFO>(*param.AmpLfo, basefreq, time);
 
     Volume = 4.0f * powf(0.1f, 3.0f * (1.0f - param.PVolume / 96.0f)) //-60 dB .. 0 dB
              * VelF(velocity, param.PAmpVelocityScaleFunction);     //sensing
 
-    GlobalFilterL = Filter::generate(memory, param.GlobalFilter);
+    GlobalFilterL = Filter::generate(memory, param.GlobalFilter,
+            synth.samplerate, synth.buffersize);
     if(stereo)
-        GlobalFilterR = Filter::generate(memory, param.GlobalFilter);
+        GlobalFilterR = Filter::generate(memory, param.GlobalFilter,
+                synth.samplerate, synth.buffersize);
     else
         GlobalFilterR = NULL;
 
-    FilterEnvelope = memory.alloc<Envelope>(*param.FilterEnvelope, basefreq);
-    FilterLfo      = memory.alloc<LFO>(*param.FilterLfo, basefreq);
+    FilterEnvelope = memory.alloc<Envelope>(*param.FilterEnvelope, basefreq, synth.dt());
+    FilterLfo      = memory.alloc<LFO>(*param.FilterLfo, basefreq, time);
     FilterQ = param.GlobalFilter->getq();
     FilterFreqTracking = param.GlobalFilter->getfreqtracking(basefreq);
 }

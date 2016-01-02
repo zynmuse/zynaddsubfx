@@ -27,8 +27,7 @@
 #include <sstream>
 #include <stdint.h>
 #include <algorithm>
-#include "Config.h"
-#include "../globals.h"
+#include <set>
 
 using std::min;
 using std::max;
@@ -56,10 +55,6 @@ void os_sleep(long length);
 std::string os_pid_as_padded_string();
 
 std::string legalizeFilename(std::string filename);
-
-extern float *denormalkillbuf; /**<the buffer to add noise in order to avoid denormalisation*/
-
-extern class Config config;
 
 void invSignal(float *sig, size_t len);
 
@@ -152,6 +147,8 @@ static inline void nullify(T &t) {delete t; t = NULL; }
 template<class T>
 static inline void arrayNullify(T &t) {delete [] t; t = NULL; }
 
+char *rtosc_splat(const char *path, std::set<std::string>);
+
 /**
  * Port macros - these produce easy and regular port definitions for common
  * types
@@ -160,16 +157,32 @@ static inline void arrayNullify(T &t) {delete [] t; t = NULL; }
   {STRINGIFY(name) "::i",  rProp(parameter) rMap(min, 0) rMap(max, 127) DOC(__VA_ARGS__), NULL, rParamICb(name)}
 
 #define rSelf(type) \
-{"self", rProp(internal) rMap(class, type) rDoc("port metadata"), 0, \
+{"self:", rProp(internal) rMap(class, type) rDoc("port metadata"), 0, \
     [](const char *, rtosc::RtData &d){ \
         d.reply(d.loc, "b", sizeof(d.obj), &d.obj);}}\
 
-#define rPaste() \
+#define rPresetType \
+{"preset-type:", rProp(internal) rDoc("clipboard type of object"), 0, \
+    [](const char *, rtosc::RtData &d){ \
+        rObject *obj = (rObject*)d.obj; \
+        d.reply(d.loc, "s", obj->type);}}
+
+#define rPaste \
+rPresetType, \
 {"paste:b", rProp(internal) rDoc("paste port"), 0, \
     [](const char *m, rtosc::RtData &d){ \
         printf("rPaste...\n"); \
         rObject &paste = **(rObject **)rtosc_argument(m,0).b.data; \
         rObject &o = *(rObject*)d.obj;\
         o.paste(paste);}}
+
+#define rArrayPaste \
+{"paste-array:bi", rProp(internal) rDoc("array paste port"), 0, \
+    [](const char *m, rtosc::RtData &d){ \
+        printf("rArrayPaste...\n"); \
+        rObject &paste = **(rObject **)rtosc_argument(m,0).b.data; \
+        int field = rtosc_argument(m,1).i; \
+        rObject &o = *(rObject*)d.obj;\
+        o.pasteArray(paste,field);}}
 
 #endif

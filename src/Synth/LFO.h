@@ -24,8 +24,9 @@
 #define LFO_H
 
 #include "../globals.h"
+#include "../Misc/Time.h"
 
-/**Class for creating Low Frequency Ocillators*/
+/**Class for creating Low Frequency Oscillators*/
 class LFO
 {
     public:
@@ -34,23 +35,44 @@ class LFO
          * @param lfopars pointer to a LFOParams object
          * @param basefreq base frequency of LFO
          */
-        LFO(const LFOParams &lfopars, float basefreq);
-        /**Deconstructor*/
+        LFO(const LFOParams &lfopars, float basefreq, const AbsTime &t);
         ~LFO();
+
         float lfoout();
         float amplfoout();
     private:
-        float x;
-        float incx, incrnd, nextincrnd;
-        float amp1, amp2; // used for randomness
-        float lfointensity;
-        float lfornd, lfofreqrnd;
-        float lfodelay;
-        /**\todo see if an enum would be better here*/
-        char lfotype;
-        int  freqrndenabled;
+        float baseOut(const char waveShape, const float phase);
+        //Phase of Oscillator
+        float phase;
+        //Phase Increment Per Frame
+        float phaseInc;
+        //Frequency Randomness
+        float incrnd, nextincrnd;
+        //Amplitude Randomness
+        float amp1, amp2;
 
-        void computenextincrnd();
+        // RND mode
+        int first_half;
+        float last_random;
+
+        //Intensity of the wave
+        float lfointensity;
+        //Amount Randomness
+        float lfornd, lfofreqrnd;
+
+        //Delay before starting
+        RelTime delayTime;
+
+        char  waveShape;
+
+        //If After initialization there are no calls to random number gen.
+        bool  deterministic;
+
+        const float     dt_;
+        const LFOParams &lfopars_;
+        const float basefreq_;
+
+        void computeNextFreqRnd(void);
 };
 
 #endif

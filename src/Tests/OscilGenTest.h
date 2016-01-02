@@ -22,6 +22,7 @@
 #include <cxxtest/TestSuite.h>
 #include <string>
 #include "../Synth/OscilGen.h"
+#include "../Misc/XMLwrapper.h"
 #include "../DSP/FFTwrapper.h"
 #include "../Misc/Util.h"
 #include "../globals.h"
@@ -48,32 +49,25 @@ class OscilGenTest:public CxxTest::TestSuite
             memset(outL, 0, sizeof(float) * synth->oscilsize);
             memset(outR, 0, sizeof(float) * synth->oscilsize);
 
-            //next the bad global variables that for some reason have not been properly placed in some
-            //initialization routine, but rather exist as cryptic oneliners in main.cpp:
-            denormalkillbuf = new float[synth->buffersize];
-            for(int i = 0; i < synth->buffersize; ++i)
-                denormalkillbuf[i] = 0;
-
             //prepare the default settings
             fft   = new FFTwrapper(synth->oscilsize);
-            oscil = new OscilGen(fft, NULL);
+            oscil = new OscilGen(*synth, fft, NULL);
 
             //Assert defaults [TODO]
 
 
-            XMLwrapper *wrap = new XMLwrapper();
-            wrap->loadXMLfile(string(SOURCE_DIR)
+            XMLwrapper wrap;
+            wrap.loadXMLfile(string(SOURCE_DIR)
                               + string("/guitar-adnote.xmz"));
-            TS_ASSERT(wrap->enterbranch("MASTER"));
-            TS_ASSERT(wrap->enterbranch("PART", 0));
-            TS_ASSERT(wrap->enterbranch("INSTRUMENT"));
-            TS_ASSERT(wrap->enterbranch("INSTRUMENT_KIT"));
-            TS_ASSERT(wrap->enterbranch("INSTRUMENT_KIT_ITEM", 0));
-            TS_ASSERT(wrap->enterbranch("ADD_SYNTH_PARAMETERS"));
-            TS_ASSERT(wrap->enterbranch("VOICE", 0));
-            TS_ASSERT(wrap->enterbranch("OSCIL"));
+            TS_ASSERT(wrap.enterbranch("MASTER"));
+            TS_ASSERT(wrap.enterbranch("PART", 0));
+            TS_ASSERT(wrap.enterbranch("INSTRUMENT"));
+            TS_ASSERT(wrap.enterbranch("INSTRUMENT_KIT"));
+            TS_ASSERT(wrap.enterbranch("INSTRUMENT_KIT_ITEM", 0));
+            TS_ASSERT(wrap.enterbranch("ADD_SYNTH_PARAMETERS"));
+            TS_ASSERT(wrap.enterbranch("VOICE", 0));
+            TS_ASSERT(wrap.enterbranch("OSCIL"));
             oscil->getfromXML(wrap);
-            delete wrap;
 
             //verify xml was loaded [TODO]
 
@@ -87,7 +81,6 @@ class OscilGenTest:public CxxTest::TestSuite
             delete fft;
             delete[] outL;
             delete[] outR;
-            delete[] denormalkillbuf;
             FFT_cleanup();
             delete synth;
         }
@@ -110,14 +103,14 @@ class OscilGenTest:public CxxTest::TestSuite
         void testSpectrum(void)
         {
             oscil->getspectrum(synth->oscilsize / 2, outR, 1);
-            TS_ASSERT_DELTA(outR[0], 350.698059f, 0.0001f);
-            TS_ASSERT_DELTA(outR[1], 228.889267f, 0.0001f);
-            TS_ASSERT_DELTA(outR[2], 62.187931f, 0.0001f);
-            TS_ASSERT_DELTA(outR[3], 22.295225f, 0.0001f);
-            TS_ASSERT_DELTA(outR[4], 6.942001f, 0.0001f);
-            TS_ASSERT_DELTA(outR[26], 0.015110f, 0.0001f);
-            TS_ASSERT_DELTA(outR[47], 0.003425f, 0.0001f);
-            TS_ASSERT_DELTA(outR[65], 0.001293f, 0.0001f);
+            TS_ASSERT_DELTA(outR[1], 350.698059f, 0.0001f);
+            TS_ASSERT_DELTA(outR[2], 228.889267f, 0.0001f);
+            TS_ASSERT_DELTA(outR[3], 62.187931f, 0.0001f);
+            TS_ASSERT_DELTA(outR[4], 22.295225f, 0.0001f);
+            TS_ASSERT_DELTA(outR[5], 6.942001f, 0.0001f);
+            TS_ASSERT_DELTA(outR[27], 0.015110f, 0.0001f);
+            TS_ASSERT_DELTA(outR[48], 0.003425f, 0.0001f);
+            TS_ASSERT_DELTA(outR[66], 0.001293f, 0.0001f);
         }
 
         //performance testing

@@ -32,6 +32,7 @@
 
 class MiddleWare;
 struct SYNTH_T;
+class Config;
 
 namespace std
 {
@@ -372,7 +373,8 @@ class zynaddsubfx_t : public zyn_tree_t
 	float *outr;
 	
 	std::size_t smp_pos = 0;
-	
+	Config* config;
+
 public:
 	using zyn_tree_t::zyn_tree_t;
 	~zynaddsubfx_t() = default;

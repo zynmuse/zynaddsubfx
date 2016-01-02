@@ -26,20 +26,28 @@
 
 using namespace GUI;
 class MasterUI *ui;
-
 #ifdef NTK_GUI
 static Fl_Tiled_Image *module_backdrop;
 #endif
 
-int undo_redo_handler(int)
+int kb_shortcut_handler(int)
 {
     const bool undo_ = Fl::event_ctrl() && Fl::event_key() == 'z';
     const bool redo = Fl::event_ctrl() && Fl::event_key() == 'r';
+    const bool show = Fl::event_ctrl() && Fl::event_shift() &&
+        Fl::event_key() == 's';
+    const bool panel = Fl::event_ctrl() && Fl::event_shift() &&
+        Fl::event_key() == 'p';
     if(undo_)
         ui->osc->write("/undo", "");
     else if(redo)
         ui->osc->write("/redo", "");
-    return undo_ || redo;
+    else if (show) {
+        ui->simplemasterwindow->hide();
+        ui->masterwindow->show();
+    } else if (panel)
+        ui->panelwindow->show();
+    return undo_ || redo || show;
 }
 
 void
@@ -69,23 +77,38 @@ ui_handle_t GUI::createUi(Fl_Osc_Interface *osc, void *exit)
 
     Fl_Dial::default_style(Fl_Dial::PIXMAP_DIAL);
 
+#ifdef CARLA_VERSION_STRING
+    if(Fl_Shared_Image *img = Fl_Shared_Image::get(gUiPixmapPath + "knob.png"))
+        Fl_Dial::default_image(img);
+#else
     if(Fl_Shared_Image *img = Fl_Shared_Image::get(PIXMAP_PATH "/knob.png"))
         Fl_Dial::default_image(img);
+#endif
     else if(Fl_Shared_Image *img = Fl_Shared_Image::get(SOURCE_DIR "/pixmaps/knob.png"))
         Fl_Dial::default_image(img);
     else
         errx(1, "ERROR: Cannot find pixmaps/knob.png");
 
 
+#ifdef CARLA_VERSION_STRING
+    if(Fl_Shared_Image *img = Fl_Shared_Image::get(gUiPixmapPath + "/window_backdrop.png"))
+        Fl::scheme_bg(new Fl_Tiled_Image(img));
+#else
     if(Fl_Shared_Image *img = Fl_Shared_Image::get(PIXMAP_PATH "/window_backdrop.png"))
         Fl::scheme_bg(new Fl_Tiled_Image(img));
+#endif
     else if(Fl_Shared_Image *img = Fl_Shared_Image::get(SOURCE_DIR "/pixmaps/window_backdrop.png"))
         Fl::scheme_bg(new Fl_Tiled_Image(img));
     else
         errx(1, "ERROR: Cannot find pixmaps/window_backdrop.png");
 
+#ifdef CARLA_VERSION_STRING
+    if(Fl_Shared_Image *img = Fl_Shared_Image::get(gUiPixmapPath + "/module_backdrop.png"))
+        module_backdrop = new Fl_Tiled_Image(img);
+#else
     if(Fl_Shared_Image *img = Fl_Shared_Image::get(PIXMAP_PATH "/module_backdrop.png"))
         module_backdrop = new Fl_Tiled_Image(img);
+#endif
     else if(Fl_Shared_Image *img = Fl_Shared_Image::get(SOURCE_DIR "/pixmaps/module_backdrop.png"))
         module_backdrop = new Fl_Tiled_Image(img);
     else
@@ -103,7 +126,7 @@ ui_handle_t GUI::createUi(Fl_Osc_Interface *osc, void *exit)
     //tree->osc           = osc;
     //midi_win->show();
 
-    Fl::add_handler(undo_redo_handler);
+    Fl::add_handler(kb_shortcut_handler);
     return (void*) (ui = new MasterUI((int*)exit, osc));
 }
 void GUI::destroyUi(ui_handle_t ui)
@@ -171,6 +194,17 @@ void GUI::raiseUi(ui_handle_t gui, const char *message)
     if(!gui)
         return;
     MasterUI *mui = (MasterUI*)gui;
+    if(string("/damage") == message && rtosc_type(message, 0) == 's') {
+        string damage_str = rtosc_argument(message,0).s;
+        int npart = -1;
+        if(sscanf(damage_str.c_str(), "/part%d", &npart) == 1 && damage_str.size() < 10) {
+            if(mui->npartcounter->value()-1 == npart) {
+                mui->partui->showparameters(0,-1);
+                mui->npartcounter->do_callback();
+            }
+        }
+        mui->osc->damage(rtosc_argument(message,0).s);
+    }
     mui->osc->tryLink(message);
     //printf("got message for UI '%s'\n", message);
     char buffer[1024];
@@ -215,6 +249,9 @@ class UI_Interface:public Fl_Osc_Interface
         {
             assert(s!="/Psysefxvol-1/part0");
             //Fl_Osc_Interface::requestValue(s);
+            char *tmp = strdup(s.c_str());
+            s = rtosc::Ports::collapsePath(tmp);
+            free(tmp);
             if(impl->activeUrl() != "GUI") {
                 impl->transmitMsg("/echo", "ss", "OSC_URL", "GUI");
                 impl->activeUrl("GUI");
@@ -225,13 +262,16 @@ class UI_Interface:public Fl_Osc_Interface
 
         void write(string s, const char *args, ...) override
         {
+            char *tmp = strdup(s.c_str());
+            s = rtosc::Ports::collapsePath(tmp);
+            free(tmp);
             va_list va;
             va_start(va, args);
             //fprintf(stderr, "%c[%d;%d;%dm", 0x1B, 0, 4 + 30, 0 + 40);
             ////fprintf(stderr, ".");
             //fprintf(stderr, "write(%s:%s)\n", s.c_str(), args);
             //fprintf(stderr, "%c[%d;%d;%dm", 0x1B, 0, 7 + 30, 0 + 40);
-            impl->transmitMsg(s.c_str(), args, va);
+            impl->transmitMsg_va(s.c_str(), args, va);
             va_end(va);
         }
 
@@ -241,7 +281,7 @@ class UI_Interface:public Fl_Osc_Interface
             ////fprintf(stderr, ".");
             //fprintf(stderr, "rawWrite(%s:%s)\n", msg, rtosc_argument_string(msg));
             //fprintf(stderr, "%c[%d;%d;%dm", 0x1B, 0, 7 + 30, 0 + 40);
-            impl->transmitMsg(msg);
+            impl->transmitMsg(rtosc::Ports::collapsePath((char*)msg));
         }
 
         void writeValue(string s, string ss) override
@@ -249,7 +289,7 @@ class UI_Interface:public Fl_Osc_Interface
             //fprintf(stderr, "%c[%d;%d;%dm", 0x1B, 0, 4 + 30, 0 + 40);
             //fprintf(stderr, "writevalue<string>(%s,%s)\n", s.c_str(),ss.c_str());
             //fprintf(stderr, "%c[%d;%d;%dm", 0x1B, 0, 7 + 30, 0 + 40);
-            impl->transmitMsg(s.c_str(), "s", ss.c_str());
+            write(s, "s", ss.c_str());
         }
 
         void writeValue(string s, char c) override
@@ -257,7 +297,7 @@ class UI_Interface:public Fl_Osc_Interface
             //fprintf(stderr, "%c[%d;%d;%dm", 0x1B, 0, 4 + 30, 0 + 40);
             //fprintf(stderr, "writevalue<char>(%s,%d)\n", s.c_str(),c);
             //fprintf(stderr, "%c[%d;%d;%dm", 0x1B, 0, 7 + 30, 0 + 40);
-            impl->transmitMsg(s.c_str(), "c", c);
+            write(s, "c", c);
         }
 
         void writeValue(string s, float f) override
@@ -265,11 +305,14 @@ class UI_Interface:public Fl_Osc_Interface
             //fprintf(stderr, "%c[%d;%d;%dm", 0x1B, 0, 4 + 30, 0 + 40);
             //fprintf(stderr, "writevalue<float>(%s,%f)\n", s.c_str(),f);
             //fprintf(stderr, "%c[%d;%d;%dm", 0x1B, 0, 7 + 30, 0 + 40);
-            impl->transmitMsg(s.c_str(), "f", f);
+            write(s, "f", f);
         }
 
         void createLink(string s, class Fl_Osc_Widget*w) override
         {
+            char *tmp = strdup(s.c_str());
+            s = rtosc::Ports::collapsePath(tmp);
+            free(tmp);
             assert(s.length() != 0);
             Fl_Osc_Interface::createLink(s,w);
             assert(!strstr(s.c_str(), "/part0/kit-1"));
@@ -278,14 +321,17 @@ class UI_Interface:public Fl_Osc_Interface
 
         void renameLink(string old, string newer, Fl_Osc_Widget *w) override
         {
-            fprintf(stdout, "renameLink('%s','%s',%p)\n",
-                    old.c_str(), newer.c_str(), w);
+            //fprintf(stdout, "renameLink('%s','%s',%p)\n",
+            //        old.c_str(), newer.c_str(), w);
             removeLink(old, w);
             createLink(newer, w);
         }
 
         void removeLink(string s, class Fl_Osc_Widget*w) override
         {
+            char *tmp = strdup(s.c_str());
+            s = rtosc::Ports::collapsePath(tmp);
+            free(tmp);
             for(auto i = map.begin(); i != map.end(); ++i) {
                 if(i->first == s && i->second == w) {
                     map.erase(i);
@@ -318,24 +364,24 @@ class UI_Interface:public Fl_Osc_Interface
         virtual void damage(const char *path) override
         {
 #ifndef NO_UI
-            //printf("\n\nDamage(\"%s\")\n", path);
+            printf("\n\nDamage(\"%s\")\n", path);
+            std::set<Fl_Osc_Widget*> to_update;
             for(auto pair:map) {
                 if(strstr(pair.first.c_str(), path)) {
                     auto *tmp = dynamic_cast<Fl_Widget*>(pair.second);
-                    //if(tmp)
-                    //    printf("%x, %d %d [%s]\n", (int)pair.second, tmp->visible_r(), tmp->visible(), pair.first.c_str());
-                    //else
-                    //    printf("%x, (NULL)[%s]\n", (int)pair.second,pair.first.c_str());
-                    if(!tmp || tmp->visible_r())
-                        pair.second->update();
+                    if(!tmp || tmp->visible_r()) {
+                        to_update.insert(pair.second);
+                    }
                 }
             }
+
+            for(auto elm:to_update)
+                elm->update();
 #endif
         }
 
         void tryLink(const char *msg) override
         {
-
             //DEBUG
             //if(strcmp(msg, "/vu-meter"))//Ignore repeated message
             //    printf("trying the link for a '%s'<%s>\n", msg, rtosc_argument_string(msg));

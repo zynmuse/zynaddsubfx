@@ -42,12 +42,16 @@
 class PADnoteParameters:public Presets
 {
     public:
-        PADnoteParameters(FFTwrapper *fft_);
+        PADnoteParameters(const SYNTH_T &synth_, FFTwrapper *fft_,
+                          const AbsTime *time_ = nullptr);
         ~PADnoteParameters();
 
         void defaults();
-        void add2XML(XMLwrapper *xml);
-        void getfromXML(XMLwrapper *xml);
+        void add2XML(XMLwrapper& xml);
+        void getfromXML(XMLwrapper& xml);
+
+        void paste(PADnoteParameters &p);
+        void pasteRT(PADnoteParameters &p);
 
         //returns a value between 0.0f-1.0f that represents the estimation perceived bandwidth
         float getprofile(float *smp, int size);
@@ -103,6 +107,8 @@ class PADnoteParameters:public Presets
            If this parameter is 0, the frequency is fixed (to 440 Hz);
            if this parameter is 64, 1 MIDI halftone -> 1 frequency halftone */
         unsigned char PfixedfreqET;
+        unsigned char PBendAdjust;
+        unsigned char POffsetHz;
         unsigned short int PDetune; //fine detune
         unsigned short int PCoarseDetune; //coarse detune+octave
         unsigned char      PDetuneType; //detune type
@@ -125,6 +131,9 @@ class PADnoteParameters:public Presets
         EnvelopeParams *AmpEnvelope;
 
         LFOParams *AmpLfo;
+
+        /* Adjustment factor for anti-pop fadein */
+        unsigned char Fadein_adjustment;
 
         unsigned char PPunchStrength, PPunchTime, PPunchStretch,
                       PPunchVelocitySensing;
@@ -165,7 +174,12 @@ class PADnoteParameters:public Presets
         void sampleGenerator(PADnoteParameters::callback cb,
                              std::function<bool()> do_abort);
 
-        static const rtosc::Ports &ports;
+        const AbsTime *time;
+        int64_t last_update_timestamp;
+
+        static const rtosc::MergePorts ports;
+        static const rtosc::Ports     &non_realtime_ports;
+        static const rtosc::Ports     &realtime_ports;
 
     private:
         void generatespectrum_bandwidthMode(float *spectrum,
@@ -181,6 +195,8 @@ class PADnoteParameters:public Presets
         void deletesample(int n);
 
         FFTwrapper *fft;
+    public:
+        const SYNTH_T &synth;
 };
 
 

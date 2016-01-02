@@ -43,7 +43,10 @@ extern MiddleWare *middleware;
 
 using namespace std;
 
-OssMultiEngine :: OssMultiEngine()
+OssMultiEngine :: OssMultiEngine(const SYNTH_T &synth,
+    const oss_devs_t &oss_devs)
+    :AudioOut(synth),
+    linux_oss_wave_out_dev(oss_devs.linux_wave_out)
 {
     /* setup variables */
     name = "OSS-MULTI";
@@ -55,7 +58,7 @@ OssMultiEngine :: OssMultiEngine()
     buffersize = 0;
 
     /* compute worst case buffer size */
-    maxbuffersize = NUM_MIDI_PARTS * sizeof(int) * synth->buffersize * 2;
+    maxbuffersize = NUM_MIDI_PARTS * sizeof(int) * synth.buffersize * 2;
     /* allocate buffer */
     smps.ps32 = new int[maxbuffersize / sizeof(int)];
     memset(smps.ps32, 0, maxbuffersize);
@@ -80,7 +83,7 @@ OssMultiEngine :: openAudio()
 
     const char *device = getenv("DSP_DEVICE");
     if(device == 0)
-        device = config.cfg.LinuxOSSWaveOutDev;
+        device = linux_oss_wave_out_dev;
 
     /* NOTE: PIPEs and FIFOs can block when opening them */
     handle = open(device, O_WRONLY, O_NONBLOCK);
@@ -118,19 +121,19 @@ OssMultiEngine :: openAudio()
     }
     channels = x;
 
-    snd_samplerate = synth->samplerate;
+    snd_samplerate = synth.samplerate;
 
     ioctl(handle, SNDCTL_DSP_SPEED, &snd_samplerate);
 
-    if (snd_samplerate != (int)synth->samplerate) {
+    if (snd_samplerate != (int)synth.samplerate) {
         cerr << "ERROR - Cannot set samplerate for "
             << device << ". " << snd_samplerate
-            << " != " << synth->samplerate << endl;
+            << " != " << synth.samplerate << endl;
         goto error;
     }
 
     /* compute buffer size for 16-bit samples */
-    buffersize = 2 * synth->buffersize * channels;
+    buffersize = 2 * synth.buffersize * channels;
     if (is32bit)
         buffersize *= 2;
 
@@ -232,7 +235,7 @@ OssMultiEngine :: audioThreadCb()
             Part *part = middleware->spawnMaster()->part[x / 2];
 
             if (is32bit) {
-                for (y = 0; y != synth->buffersize; y++) {
+                for (y = 0; y != synth.buffersize; y++) {
                     l = part->partoutl[y];
                     if (l < -1.0f)
                         l = -1.0f;
@@ -247,7 +250,7 @@ OssMultiEngine :: audioThreadCb()
                     smps.ps32[y * channels + x + 1] = (int)(r * 2147483647.0f);
                 }
             } else {
-                for (y = 0; y != synth->buffersize; y++) {
+                for (y = 0; y != synth.buffersize; y++) {
                     l = part->partoutl[y];
                     if (l < -1.0f)
                         l = -1.0f;

@@ -27,20 +27,20 @@
 #include "PresetsArray.h"
 
 enum FMTYPE {
-    NONE, MORPH, RING_MOD, PHASE_MOD, FREQ_MOD, PITCH_MOD
+    NONE, MORPH, RING_MOD, PHASE_MOD, FREQ_MOD, PW_MOD
 };
-extern int ADnote_unison_sizes[];
 
 /*****************************************************************/
 /*                    GLOBAL PARAMETERS                          */
 /*****************************************************************/
 
 struct ADnoteGlobalParam {
-    ADnoteGlobalParam();
+    ADnoteGlobalParam(const AbsTime* time_ = nullptr);
     ~ADnoteGlobalParam();
     void defaults();
-    void add2XML(XMLwrapper *xml);
-    void getfromXML(XMLwrapper *xml);
+    void add2XML(XMLwrapper& xml);
+    void getfromXML(XMLwrapper& xml);
+    void paste(ADnoteGlobalParam &a);
     /* The instrument type  - MONO/STEREO
     If the mode is MONO, the panning of voices are not used
     Stereo=1, Mono=0. */
@@ -79,6 +79,9 @@ struct ADnoteGlobalParam {
 
     LFOParams *AmpLfo;
 
+    /* Adjustment factor for anti-pop fadein */
+    unsigned char Fadein_adjustment;
+
     unsigned char PPunchStrength, PPunchTime, PPunchStretch,
                   PPunchVelocitySensing;
 
@@ -103,6 +106,9 @@ struct ADnoteGlobalParam {
     //how the randomness is applied to the harmonics on more voices using the same oscillator
     unsigned char Hrandgrouping;
 
+    const AbsTime *time;
+    int64_t last_update_timestamp;
+
     static const rtosc::Ports &ports;
 };
 
@@ -112,10 +118,13 @@ struct ADnoteGlobalParam {
 /*                    VOICE PARAMETERS                     */
 /***********************************************************/
 struct ADnoteVoiceParam {
-    void getfromXML(XMLwrapper *xml, unsigned nvoice);
-    void add2XML(XMLwrapper *xml, bool fmoscilused);
+    ADnoteVoiceParam() : time(nullptr), last_update_timestamp(0) { };
+    void getfromXML(XMLwrapper& xml, unsigned nvoice);
+    void add2XML(XMLwrapper& xml, bool fmoscilused);
+    void paste(ADnoteVoiceParam &p);
     void defaults(void);
-    void enable(FFTwrapper *fft, Resonance *Reson);
+    void enable(const SYNTH_T &synth, FFTwrapper *fft, Resonance *Reson,
+                const AbsTime *time);
     void kill(void);
     float getUnisonFrequencySpreadCents(void) const;
     /** If the voice is enabled */
@@ -185,6 +194,12 @@ struct ADnoteVoiceParam {
     /** Detune type */
     unsigned char PDetuneType;
 
+    /** Pitch bend adjustment */
+    unsigned char PBendAdjust;
+
+    /** Pitch offset Hz */
+    unsigned char POffsetHz;
+
     /* Frequency Envelope */
     unsigned char   PFreqEnvelopeEnabled;
     EnvelopeParams *FreqEnvelope;
@@ -236,9 +251,15 @@ struct ADnoteVoiceParam {
     unsigned char   PFilterEnvelopeEnabled;
     EnvelopeParams *FilterEnvelope;
 
-    /* LFO Envelope */
+    /* Filter LFO */
     unsigned char PFilterLfoEnabled;
     LFOParams    *FilterLfo;
+
+    // filter velocity sensing
+    unsigned char PFilterVelocityScale;
+
+    // filter velocity sensing
+    unsigned char PFilterVelocityScaleFunction;
 
     /****************************
     *   MODULLATOR PARAMETERS   *
@@ -273,6 +294,9 @@ struct ADnoteVoiceParam {
     /* The detune type */
     unsigned char PFMDetuneType;
 
+    /* FM base freq fixed at 440Hz */
+    unsigned char PFMFixedFreq;
+
     /* Frequency Envelope of the Modullator */
     unsigned char   PFMFreqEnvelopeEnabled;
     EnvelopeParams *FMFreqEnvelope;
@@ -281,36 +305,46 @@ struct ADnoteVoiceParam {
     unsigned char   PFMAmpEnvelopeEnabled;
     EnvelopeParams *FMAmpEnvelope;
 
+    unsigned char *GlobalPDetuneType;
+
+    const AbsTime *time;
+    int64_t last_update_timestamp;
+
     static const rtosc::Ports &ports;
 };
 
 class ADnoteParameters:public PresetsArray
 {
     public:
-        ADnoteParameters(FFTwrapper *fft_);
+        ADnoteParameters(const SYNTH_T &synth, FFTwrapper *fft_,
+                         const AbsTime *time_ = nullptr);
         ~ADnoteParameters();
 
         ADnoteGlobalParam GlobalPar;
         ADnoteVoiceParam  VoicePar[NUM_VOICES];
 
         void defaults();
-        void add2XML(XMLwrapper *xml);
-        void getfromXML(XMLwrapper *xml);
+        void add2XML(XMLwrapper& xml);
+        void getfromXML(XMLwrapper& xml);
+
+        void paste(ADnoteParameters &a);
+        void pasteArray(ADnoteParameters &a, int section);
+
 
         float getBandwidthDetuneMultiplier() const;
         float getUnisonFrequencySpreadCents(int nvoice) const;
-        int get_unison_size_index(int nvoice) const;
-        void set_unison_size_index(int nvoice, int index);
         static const rtosc::Ports &ports;
-    private:
         void defaults(int n); //n is the nvoice
+        void add2XMLsection(XMLwrapper& xml, int n);
+        void getfromXMLsection(XMLwrapper& xml, int n);
+    private:
 
-        void EnableVoice(int nvoice);
+        void EnableVoice(const SYNTH_T &synth, int nvoice, const AbsTime* time);
         void KillVoice(int nvoice);
         FFTwrapper *fft;
 
-        void add2XMLsection(XMLwrapper *xml, int n);
-        void getfromXMLsection(XMLwrapper *xml, int n);
+        const AbsTime *time;
+        int64_t last_update_timestamp;
 };
 
 #endif

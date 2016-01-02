@@ -30,7 +30,7 @@
 class OscilGen:public Presets
 {
     public:
-        OscilGen(FFTwrapper *fft_, Resonance *res_);
+        OscilGen(const SYNTH_T &synth, FFTwrapper *fft_, Resonance *res_);
         ~OscilGen();
 
         /**computes the full spectrum of oscil from harmonics,phases and basefunc*/
@@ -52,9 +52,9 @@ class OscilGen:public Presets
         void useasbase();
 
         void paste(OscilGen &o);
-        void add2XML(XMLwrapper *xml);
+        void add2XML(XMLwrapper& xml);
         void defaults();
-        void getfromXML(XMLwrapper *xml);
+        void getfromXML(XMLwrapper& xml);
 
         void convert2sine();
 
@@ -84,7 +84,7 @@ class OscilGen:public Presets
 
         unsigned char Pwaveshaping, Pwaveshapingfunction;
         unsigned char Pfiltertype, Pfilterpar1, Pfilterpar2;
-        unsigned char Pfilterbeforews;
+        bool          Pfilterbeforews;
         unsigned char Psatype, Psapar; //spectrum adjust
 
         int Pharmonicshift; //how the harmonics are shifted
@@ -114,7 +114,9 @@ class OscilGen:public Presets
 
         bool ADvsPAD; //if it is used by ADsynth or by PADsynth
 
-        static const rtosc::Ports ports;
+        static const rtosc::MergePorts ports;
+        static const rtosc::Ports      non_realtime_ports;
+        static const rtosc::Ports      realtime_ports;
 
         /* Oscillator Frequencies -
          *  this is different than the hamonics set-up by the user,
@@ -126,6 +128,8 @@ class OscilGen:public Presets
         //This array stores some termporary data and it has OSCIL_SIZE elements
         float *tmpsmps;
         fft_t *outoscilFFTfreqs;
+        float *cachedbasefunc;
+        bool cachedbasevalid;
 
         float hmag[MAX_AD_HARMONICS], hphase[MAX_AD_HARMONICS]; //the magnituides and the phases of the sine/nonsine harmonics
 
@@ -146,6 +150,8 @@ class OscilGen:public Presets
 
         //Do the oscil modulation stuff
         void modulation(fft_t *freqs);
+
+        float userfunc(float x);
 
     public:
         //Check system for needed updates
@@ -177,6 +183,8 @@ class OscilGen:public Presets
         Resonance *res;
 
         unsigned int randseed;
+    public:
+        const SYNTH_T &synth;
 };
 
 typedef float (*filter_func)(unsigned int, float, float);

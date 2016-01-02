@@ -29,6 +29,9 @@ decl {\#include "Fl_Osc_Interface.h"} {public local
 decl {\#include "Fl_Osc_Check.H"} {public local
 } 
 
+decl {\#include "Fl_Osc_Pane.H"} {public local
+}
+
 decl {\#include "../Misc/Util.h"} {public local
 } 
 
@@ -46,8 +49,7 @@ class BankUI {open
     } {
       Fl_Box {} {
         xywh {0 0 0 0}
-        code0 {bankuiwindow->osc = osc;}
-        code1 {bankuiwindow->base = "/";}
+        code0 {bankuiwindow->init(osc, "/");}
       }
       Fl_Button {} {
         label Close
@@ -87,7 +89,7 @@ refreshmainwindow();}
         callback {refreshmainwindow();}
         xywh {5 8 220 20} down_box BORDER_BOX labelfont 1 align 0 textfont 1 textsize 11
         code0 {bankview->init(osc, modeselect, npart);}
-        code1 {o->init("loadbank");}
+        code1 {o->init("bank/bank_select");}
         class BankList
       } {}
       Fl_Button {} {
@@ -136,7 +138,7 @@ bankview->refresh();} {}
   Function {rescan_for_banks()} {open
   } {
     code {banklist->clear();
-    osc->write("/rescanforbanks");
+    osc->write("/bank/rescan");
 if (banklist->size() == 0)
      banklist->add(" ");} {}
   }

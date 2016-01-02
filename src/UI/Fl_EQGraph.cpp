@@ -11,7 +11,7 @@
 #define MAX_DB 30
 
 Fl_EQGraph::Fl_EQGraph(int x,int y, int w, int h, const char *label)
-    :Fl_Box(x,y,w,h,label), Fl_Osc_Widget(this), samplerate(48000)
+    :Fl_Box(x,y,w,h,label), Fl_Osc_Widget(this), samplerate(48000), gain(0.5f)
 {
     memset(num, 0, sizeof(num));
     memset(dem, 0, sizeof(dem));
@@ -21,6 +21,7 @@ Fl_EQGraph::Fl_EQGraph(int x,int y, int w, int h, const char *label)
     osc->createLink("/samplerate", this);
     osc->requestValue("/samplerate");
     oscRegister("eq-coeffs");
+    oscRegister("parameter0");
 }
 
 Fl_EQGraph::~Fl_EQGraph(void)
@@ -30,9 +31,11 @@ void Fl_EQGraph::OSC_raw(const char *msg)
 {
     if(strstr(msg, "samplerate") && !strcmp("f", rtosc_argument_string(msg))) {
         samplerate = rtosc_argument(msg, 0).f;
+    } else if(strstr(msg, "parameter0") && !strcmp("i", rtosc_argument_string(msg))) {
+        gain = powf(0.005f, (1.0f-rtosc_argument(msg, 0).i/127.0f)) * 10.0f;
     } else {
         memcpy(dem, rtosc_argument(msg, 0).b.data, sizeof(dem));
-        memcpy(num, rtosc_argument(msg, 1).b.data, sizeof(dem));
+        memcpy(num, rtosc_argument(msg, 1).b.data, sizeof(num));
         redraw();
     }
 }
@@ -141,16 +144,24 @@ void Fl_EQGraph::draw(void)
 double Fl_EQGraph::getresponse(int maxy,float freq) const
 {
     const float angle = 2*PI*freq/samplerate;
-    std::complex<float> num_res = 0;
-    std::complex<float> dem_res = 0;
+    float mag = 1;
+    //std::complex<float> num_res = 0;
+    //std::complex<float> dem_res = 0;
          
 
-    for(int i = 0; i < MAX_EQ_BANDS*MAX_FILTER_STAGES*2+1; ++i) {
-        num_res += FFTpolar<float>(num[i], i*angle);
-        dem_res += FFTpolar<float>(dem[i], i*angle);
+    for(int i = 0; i < MAX_EQ_BANDS*MAX_FILTER_STAGES; ++i) {
+        if(num[3*i] == 0)
+            break;
+        std::complex<float> num_res= 0;
+        std::complex<float> dem_res= 0;
+        for(int j=0; j<3; ++j) {
+            num_res += FFTpolar<float>(num[3*i+j], j*angle);
+            dem_res += FFTpolar<float>(dem[3*i+j], j*angle);
+        }
+        mag *= abs(num_res/dem_res);
     }
 
-    float dbresp=20*log(abs(num_res/dem_res))/log(10);
+    float dbresp=20*log(mag*gain)/log(10);
 
     //rescale
     return (int) ((dbresp/MAX_DB+1.0)*maxy/2.0);

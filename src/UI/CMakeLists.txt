@@ -31,15 +31,34 @@ if(NtkGui)
 endif()
 
 if(FltkGui)
-    add_executable(zynaddsubfx_ext_gui guimain.cpp)
-    target_link_libraries(zynaddsubfx_ext_gui zynaddsubfx_gui ${FLTK_LIBRARIES}
-        ${FLTK_LIBRARIES} ${OPENGL_LIBRARIES} ${X11_LIBRARIES} ${LIBLO_LIBRARIES} rtosc rtosc-cpp)
+    add_executable(zynaddsubfx-ext-gui guimain.cpp)
+    target_link_libraries(zynaddsubfx-ext-gui zynaddsubfx_gui ${FLTK_LIBRARIES}
+        ${FLTK_LIBRARIES} ${OPENGL_LIBRARIES} ${LIBLO_LIBRARIES} rtosc rtosc-cpp)
+    if(X11_FOUND AND HAS_XPM)
+        add_definitions(-DHAS_X11=1)
+        target_link_libraries(zynaddsubfx-ext-gui ${X11_LIBRARIES} -lXpm)
+    else()
+        add_definitions(-DHAS_X11=0)
+    endif()
+    install(TARGETS zynaddsubfx-ext-gui RUNTIME DESTINATION bin)
+elseif(NtkGui)
+    add_executable(zynaddsubfx-ext-gui guimain.cpp)
+    target_link_libraries(zynaddsubfx-ext-gui zynaddsubfx_gui ${NTK_LDFLAGS}
+        ${OPENGL_LIBRARIES} ${LIBLO_LIBRARIES} rtosc rtosc-cpp)
+    if(X11_FOUND AND HAS_XPM)
+        add_definitions(-DHAS_X11=1)
+        target_link_libraries(zynaddsubfx-ext-gui ${X11_LIBRARIES} -lXpm)
+    else()
+        add_definitions(-DHAS_X11=0)
+    endif()
+    install(TARGETS zynaddsubfx-ext-gui RUNTIME DESTINATION bin)
 endif()
 
 add_library(zynaddsubfx_gui STATIC
 	${UI_objs}
 	${zynaddsubfx_gui_FLTK_UI_SRCS}
         NioUI.cpp
+	TipWin.cpp
         WidgetPDial.cpp
         PartNameButton.cpp
         Fl_Osc_Pane.cpp
@@ -47,6 +66,7 @@ add_library(zynaddsubfx_gui STATIC
         Fl_Osc_Dial.cpp
         Fl_Osc_DialF.cpp
         Fl_Osc_Slider.cpp
+        Fl_Osc_TSlider.cpp
         Fl_Osc_VSlider.cpp
         Fl_Osc_Button.cpp
         Fl_Osc_Check.cpp
@@ -55,6 +75,7 @@ add_library(zynaddsubfx_gui STATIC
         Fl_Osc_Output.cpp
         Fl_Osc_Counter.cpp
         Fl_Osc_Input.cpp
+        Fl_Osc_Numeric_Input.cpp
         Fl_Osc_Value.cpp
         Fl_Osc_ListView.cpp
         Fl_Resonance_Graph.cpp

@@ -23,6 +23,9 @@ decl {\#include "../globals.h"} {public local
 decl {\#include "Fl_Osc_VSlider.H"} {public local
 } 
 
+decl {\#include "Fl_Osc_TSlider.H"} {public local
+} 
+
 decl {\#include "Fl_Osc_Dial.H"} {public local
 } 
 
@@ -41,51 +44,26 @@ decl {\#include "../Params/SUBnoteParameters.h"} {public local
 decl {\#include "PresetsUI.h"} {public local
 } 
 
-class PPSlider {: {public Fl_Slider, public Fl_Osc_Widget}
+class SUBSlider {: {public Fl_Osc_TSlider}
 } {
-  Function {PPSlider(int x,int y, int w, int h, const char *label=0):Fl_Slider(x,y,w,h,label),Fl_Osc_Widget(this)} {open
+  Function {SUBSlider(int x,int y, int w, int h, const char *label=0)
+  :Fl_Osc_TSlider(x,y,w,h,label)} {open
+  } { code {} {}}
+   Function {OSC_value(char c)} {open return_type void
+   } { code {
+       value(127-c);
+       selection_color(value() == reset_value ? 0 : 222);	
+   } {} }
+  Function {cb(void)} {open return_type void
   } {
-    code {//Shamelessly copied from OscilGenUI.fl TODO refactor
-    bw=false;} {}
-  }
-  Function {handle(int event)} {open return_type int
-  } {
-    code {int X=x(),Y=y(),W=w(),H=h();
-
-if ((!Fl::event_buttons())|| (event==0)||(Fl::event_shift()==0)) return(Fl_Slider::handle(event));
-
-if (!Fl::event_inside(X,Y,W,H)) {
-	if (event==FL_DRAG){
-		Fl_Slider::handle(FL_RELEASE);
-		Fl_Slider::handle(FL_LEAVE);
-		deactivate();
-		activate();
-		return(1);	
-	}else{
-		return(Fl_Slider::handle(event));
-	};
-} else {
-	//Fl_Slider::handle(FL_FOCUS);
-	Fl_Slider::handle(FL_PUSH);
-};
-
-return(1);} {}
-  }
-  Function {rebase(std::string new_base)} {return_type void
-  } {
-    code {(void) new_base;} {}
-  }
-  Function {update()} {return_type void
-  } {
-    code {} {}
-  }
-  Function {OSC_value(char c)} {open return_type void
-  } {
-    code {value(127-c);} {}
-  }
-  decl {bool bw;} {public local
-  }
-} 
+    code {
+	selection_color(value() == reset_value ? 0 : 222);	
+	oscWrite(ext, "c", (int)(127-Fl_Slider::value()));
+	if(cb_data.first)
+	    cb_data.first(this, cb_data.second);
+} {}
+   }
+}
 
 class SUBnoteharmonic {: {public Fl_Osc_Group}
 } {
@@ -96,23 +74,12 @@ class SUBnoteharmonic {: {public Fl_Osc_Group}
       class Fl_Osc_Group
     } {
       Fl_Slider mag {
-        callback {//TODO consider unifying this with the OscilGenUI display stuff
-        int x=0;
-if (Fl::event_button1() || Fl::event() == FL_MOUSEWHEEL) x=127-(int)o->value();
-   else o->value(127-x);
-   o->osc->writeValue(o->loc + "Phmag" + to_s(n), (char) x);
-if (x==0) o->selection_color(0);
-    else o->selection_color(222);}
-        tooltip {harmonic's magnitude} xywh {0 15 10 135} type {Vert Knob} box FLAT_BOX selection_color 222 maximum 127 step 1 value 127
-        class PPSlider
+        tooltip {harmonic's magnitude} xywh {0 15 10 135} type {Vert Knob} box FLAT_BOX selection_color 0 maximum 127 step 1 value 127
+        class SUBSlider
       }
       Fl_Slider bw {
-        callback {int x=64;
-if (Fl::event_button1() || Fl::event() == FL_MOUSEWHEEL) x=127-(int)o->value();
-   else o->value(x);
-   o->osc->writeValue(o->loc+"Phrelbw"+to_s(n), (char) x);}
         tooltip {harmonic's bandwidth} xywh {0 157 10 130} type {Vert Knob} box FLAT_BOX selection_color 222 maximum 127 step 1 value 64
-        class PPSlider
+        class SUBSlider
       }
       Fl_Box {} {
         xywh {10 219 5 5} box FLAT_BOX color 45
@@ -137,17 +104,22 @@ if (Fl::event_button1() || Fl::event() == FL_MOUSEWHEEL) x=127-(int)o->value();
     code {n=n_;
 make_window();
 harmonic->show();
-
-osc->createLink(base+"Phmag"+to_s(n), mag);
-osc->createLink(base+"Phrelbw"+to_s(n), bw);
-osc->requestValue(base+"Phmag"+to_s(n));
+mag->reset_value=127;
+mag->ext = "Phmag" + to_s(n);
+mag->oscRegister(mag->ext.c_str());
+mag->set_transform([](float x){return 127.0f - x;});
+bw->reset_value=63;
+bw->ext = "Phrelbw" + to_s(n);
+bw->oscRegister(bw->ext.c_str());
+bw->set_transform([](float x){return 63.0f - x;});
 osc->requestValue(base+"Phrelbw"+to_s(n));
 
 end();} {}
   }
   Function {refresh()} {} {
-    code {osc->requestValue(base+"Phmag"+to_s(n));
-osc->requestValue(base+"Phrelbw"+to_s(n));} {}
+    code {// request values for the widgets
+mag->oscWrite(mag->ext);
+bw->oscWrite(bw->ext);} {}
   }
   Function {~SUBnoteharmonic()} {} {
     code {harmonic->hide();
@@ -164,12 +136,12 @@ class SUBnoteUI {open : {public PresetsUI_}
   } {
     Fl_Window SUBparameters {
       label {SUBsynth Parameters} open
-      xywh {542 511 735 470} type Double
+      xywh {542 511 735 475} type Double
       class Fl_Osc_Window visible
     } {
       Fl_Box {} {
         xywh {0 0 0 0} box FLAT_BOX color 45
-        code0 {SUBparameters->osc = osc; SUBparameters->base = loc;}
+        code0 {SUBparameters->init(osc, loc);}
       }
       Fl_Scroll {} {
         label scroll open
@@ -183,7 +155,7 @@ class SUBnoteUI {open : {public PresetsUI_}
       Fl_Button {} {
         label Close
         callback {SUBparameters->hide();}
-        xywh {625 446 105 20} box THIN_UP_BOX labelfont 1 labelsize 11
+        xywh {670 446 60 25} box THIN_UP_BOX
       }
       Fl_Group {} {
         label AMPLITUDE open
@@ -192,19 +164,19 @@ class SUBnoteUI {open : {public PresetsUI_}
         Fl_Value_Slider vol {
           label Vol
           tooltip Volume xywh {10 25 140 15} type {Horz Knob} box NO_BOX labelsize 11 align 8 maximum 127 step 1
-          code0 {o->init("PVolume");}
+          code0 {o->init("PVolume");o->reset_value=96;}
           class Fl_Osc_VSlider
         }
         Fl_Value_Slider vsns {
           label {V.Sns}
           tooltip {Velocity Sensing Function (rightmost to disable)} xywh {10 45 140 15} type {Horz Knob} box NO_BOX labelsize 11 align 8 maximum 127 step 1
-          code0 {o->init("PAmpVelocityScaleFunction");}
+          code0 {o->init("PAmpVelocityScaleFunction");o->reset_value=90;}
           class Fl_Osc_VSlider
         }
         Fl_Dial pan {
           label Pan
           tooltip {Panning (leftmost is Random)} xywh {185 20 30 30} box ROUND_UP_BOX labelsize 10 maximum 127 step 1
-          code0 {o->init("PPanning");}
+          code0 {o->init("PPanning");o->reset_value=64;}
           class Fl_Osc_Dial
         }
         Fl_Group ampenv {
@@ -315,6 +287,18 @@ freqsettingsui->redraw();}
           code0 {o->init("detunevalue");}
           class Fl_Osc_Output
         }
+        Fl_Dial bendadjdial {
+          label Bend
+          tooltip {How the frequency varies according to the pitch wheel} xywh {448 53 15 15} box ROUND_UP_BOX labelsize 10 align 8 minimum -64 maximum 63 step 1
+          code0 {o->init("PBendAdjust"); o->reset_value=24;o->set_transform([](float x){return x/24.0f;});o->set_rounding(2);}
+          class Fl_Osc_Dial
+        }
+        Fl_Dial offsethzdial {
+          label Offset
+          tooltip {Offset of frequency in Hz} xywh {500 53 15 15} box ROUND_UP_BOX labelsize 10 align 8 minimum -64 maximum 63 step 1
+          code0 {o->init("POffsetHz"); o->set_rounding(2); o->set_transform([](float x){x/=64; return 15*(x*sqrtf(fabsf(x)));});}
+          class Fl_Osc_Dial
+        }
         Fl_Check_Button hz440 {
           label 440Hz
           callback {if (o->value()==0) fixedfreqetdial->deactivate();
@@ -325,7 +309,7 @@ freqsettingsui->redraw();}
         }
         Fl_Dial fixedfreqetdial {
           label {Eq.T.}
-          tooltip {How the frequency varies acording to the keyboard (leftmost for fixed frequency)} xywh {610 53 15 15} box ROUND_UP_BOX labelsize 10 align 8 maximum 127 step 1
+          tooltip {How the frequency varies according to the keyboard (leftmost for fixed frequency)} xywh {610 53 15 15} box ROUND_UP_BOX labelsize 10 align 8 maximum 127 step 1
           code0 {o->init("PfixedfreqET");}
           class Fl_Osc_Dial
         }
@@ -347,13 +331,14 @@ freqsettingsui->redraw();}
       Fl_Button {} {
         label Clear
         callback {o->oscWrite("clear");
-        for (int i=0;i<MAX_SUB_HARMONICS;i++){
-    h[i]->mag->value(127);
-    h[i]->bw->value(64);
+        for (int i=1;i<MAX_SUB_HARMONICS;i++){
+    h[i]->mag->oscWrite(h[i]->mag->ext, "c", 0);
+    h[i]->bw->oscWrite(h[i]->bw->ext, "c", 64);
 };
-h[0]->mag->value(0);
+h[0]->mag->oscWrite(h[0]->mag->ext, "c", 127);
+h[0]->bw->oscWrite(h[0]->bw->ext, "c", 64);
 SUBparameters->redraw();}
-        tooltip {Clear the harmonics} xywh {445 446 70 20} box THIN_UP_BOX labelfont 1 labelsize 11
+        tooltip {Clear the harmonics} xywh {445 446 70 25} box THIN_UP_BOX
         class Fl_Osc_Button
       }
       Fl_Group bandwidthsettingsui {
@@ -379,14 +364,14 @@ bandwidthsettingsui->redraw();}
         Fl_Value_Slider bandwidth {
           label {Band Width}
           xywh {225 40 115 15} type {Horz Knob} box NO_BOX labelsize 10 align 1 maximum 127 step 1
-          code0 {o->init("Pbandwidth");}
+          code0 {o->init("Pbandwidth");o->reset_value=40;}
           class Fl_Osc_VSlider
         }
         Fl_Value_Slider bwidthscale {
           label {B.Width Scale}
           tooltip {How much I increase the BandWidth according to lower/higher harmonics} xywh {345 40 90 15} type {Horz Knob} box NO_BOX labelsize 10 align 1 minimum -64 maximum 63 step 1
           code0 {o->init("Pbwscale",'i');}
-          class Fl_Osc_Slider
+          class Fl_Osc_TSlider
         }
       }
       Fl_Group globalfiltergroup {
@@ -419,12 +404,12 @@ globalfiltergroup->redraw();}
       Fl_Button {} {
         label C
         callback {presetsui->copy(loc);}
-        xywh {540 451 25 15} box THIN_UP_BOX color 179 labelfont 1 labelsize 11 labelcolor 55
+        xywh {600 451 25 15} box THIN_UP_BOX color 179 labelfont 1 labelsize 11 labelcolor 55
       }
       Fl_Button {} {
         label P
         callback {presetsui->paste(loc,this);}
-        xywh {570 451 25 15} box THIN_UP_BOX color 179 labelfont 1 labelsize 11 labelcolor 55
+        xywh {630 451 25 15} box THIN_UP_BOX color 179 labelfont 1 labelsize 11 labelcolor 55
       }
       Fl_Group {} {
         label OVERTONES open

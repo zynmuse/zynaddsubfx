@@ -11,6 +11,9 @@ endif()
 
 #Dependency check
 include(CheckFunctionExists)
+include(CheckIncludeFile)
+include(CheckCXXSourceCompiles)
+include(CheckCXXCompilerFlag) 
 find_package(PkgConfig REQUIRED)
 
 #Apply pkg config paths for some apps
@@ -20,6 +23,7 @@ endif()
 
 find_package(zlib REQUIRED)
 find_package(X11)
+check_include_file(X11/xpm.h HAS_XPM)
 pkg_check_modules(FFTW REQUIRED fftw3)
 pkg_check_modules(MXML REQUIRED mxml)
 find_package(Threads   REQUIRED)
@@ -47,6 +51,19 @@ pkg_search_module(MINIMAL minimal>=0.0.1)
 mark_as_advanced(MINIMAL_LIBRARIES)
 
 CHECK_FUNCTION_EXISTS(sched_setscheduler HAVE_SCHEDULER)
+set(CMAKE_REQUIRED_FLAGS "-std=c++11")
+CHECK_CXX_SOURCE_COMPILES(
+    "#include <future>
+    #if ATOMIC_INT_LOCK_FREE<2
+    #error unreliable atomics
+    #endif
+    int main(){return 0;}" HAVE_ASYNC)
+
+check_cxx_compiler_flag("-msse2" SUPPORT_SSE)
+check_cxx_compiler_flag("-mfpu=neon -Werror" SUPPORT_NEON)
+
+set(CMAKE_REQUIRED_FLAGS "")
+
 
 execute_process(COMMAND echo fistpl 0
                 COMMAND as -
@@ -90,6 +107,12 @@ add_definitions(-DVERSION="${VERSION}")
 if(NOT "Darwin" STREQUAL ${CMAKE_SYSTEM_NAME})
     # Add scheduler function existance info (OSX compatiability)
     add_definitions(-DHAVE_SCHEDULER=${HAVE_SCHEDULER})
+endif()
+
+if(HAVE_ASYNC)
+    add_definitions(-DHAVE_ASYNC=1)
+else()
+    add_definitions(-DHAVE_ASYNC=0)
 endif()
 
 
@@ -149,18 +172,28 @@ option (BuildForDebug "Include gdb debugging support" OFF)
 
 set(CMAKE_BUILD_TYPE "Release")
 
+
 set (BuildOptions_x86_64AMD
-    "-std=c++11 -O3 -march=athlon64 -m64 -Wall -Wno-unused-parameter -ffast-math -fno-finite-math-only -fomit-frame-pointer"
+    "-march=athlon64 -m64 -Wall -Wno-unused-parameter"
   CACHE STRING "X86_64 compiler options"
 )
 
 set (BuildOptions_X86_64Core2
-    "-std=c++11 -O3 -march=core2 -m64 -Wall -Wno-unused-parameter -ffast-math -fno-finite-math-only -fomit-frame-pointer"
+    "-march=core2 -m64 -Wall -Wno-unused-parameter"
   CACHE STRING "X86_64 compiler options"
 )
 
+set (BuildOptions_NEON
+    "-march=armv7-a -mfloat-abi=hard -mfpu=neon -mcpu=cortex-a9 -mtune=cortex-a9 -pipe -mvectorize-with-neon-quad -funsafe-loop-optimizations"
+  CACHE STRING "Cortex_a9 compiler options"
+)
+set (BuildOptions_SSE
+	"-msse -msse2 -mfpmath=sse"
+  CACHE STRING "SSE compiler options"
+)
+
 set (BuildOptionsBasic
-    "-std=c++11 -Wno-unused-parameter -O3 -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer"
+    "-std=c++11 -Wno-unused-parameter -O3 -ffast-math -fomit-frame-pointer"
     CACHE STRING "basic X86 complier options"
 )
 
@@ -248,15 +281,25 @@ if (BuildForDebug)
 	message (STATUS "Building for ${CMAKE_BUILD_TYPE}, flags: ${CMAKE_CXX_FLAGS_DEBUG}")
 else (BuildForDebug)
 	set (CMAKE_BUILD_TYPE "Release")
+	
+	set (CMAKE_CXX_FLAGS_RELEASE ${BuildOptionsBasic})
+	
 	if (BuildForAMD_X86_64)
-		set (CMAKE_CXX_FLAGS_RELEASE ${BuildOptions_x86_64AMD})
-	else (BuildForAMD_X86_64)
-		if (BuildForCore2_X86_64)
-			set (CMAKE_CXX_FLAGS_RELEASE ${BuildOptions_X86_64Core2})
-		else (BuildForCore2_X86_64)
-			set (CMAKE_CXX_FLAGS_RELEASE ${BuildOptionsBasic})
-		endif (BuildForCore2_X86_64)
+		set (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} ${BuildOptions_x86_64AMD}")
 	endif (BuildForAMD_X86_64)
+	
+	if (BuildForCore2_X86_64)
+			set (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} ${BuildOptions_X86_64Core2}")
+	endif (BuildForCore2_X86_64)
+				
+	if (SUPPORT_SSE)
+		set (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} ${BuildOptions_SSE}")
+	endif (SUPPORT_SSE)
+	
+	if (SUPPORT_NEON)
+		set (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} ${BuildOptions_NEON}")
+	endif (SUPPORT_NEON)
+	
 	message (STATUS "Building for ${CMAKE_BUILD_TYPE}, flags: ${CMAKE_CXX_FLAGS_RELEASE}")
 endif (BuildForDebug)
 
@@ -298,8 +341,8 @@ if(FltkGui)
 
 
 	set(GUI_LIBRARIES zynaddsubfx_gui ${FLTK_LIBRARIES} ${FLTK_LIBRARIES} ${OPENGL_LIBRARIES})
-    if(X11_FOUND)
-        set(GUI_LIBRARIES ${GUI_LIBRARIES} ${X11_LIBRARIES})
+    if(X11_FOUND AND HAS_XPM)
+        set(GUI_LIBRARIES ${GUI_LIBRARIES} ${X11_LIBRARIES} -lXpm)
     endif()
 
 	add_definitions(-DFLTK_GUI)
@@ -322,8 +365,8 @@ if(NtkGui)
 
 	set(GUI_LIBRARIES zynaddsubfx_gui ${NTK_LIBRARIES} ${NTK_IMAGES_LIBRARIES} ${OPENGL_LIBRARIES})
 
-    if(X11_FOUND)
-        set(GUI_LIBRARIES ${GUI_LIBRARIES} ${X11_LIBRARIES})
+    if(X11_FOUND AND HAS_XPM)
+        set(GUI_LIBRARIES ${GUI_LIBRARIES} ${X11_LIBRARIES} -lXpm)
     endif()
 
 	add_definitions(-DNTK_GUI)
@@ -377,7 +420,10 @@ add_subdirectory(DSP)
 add_subdirectory(Nio)
 
 add_library(zynaddsubfx_core STATIC
+    globals.cpp
     ../tlsf/tlsf.c
+    Containers/NotePool.cpp
+    Containers/MultiPseudoStack.cpp
 	${zynaddsubfx_dsp_SRCS}
 	${zynaddsubfx_effect_SRCS}
 	${zynaddsubfx_misc_SRCS}
@@ -412,9 +458,13 @@ target_link_libraries(zynaddsubfx
 
 if (DssiEnable)
 	add_library(zynaddsubfx_dssi SHARED
-        UI/ConnectionDummy.cpp
-		Output/DSSIaudiooutput.cpp
-		)
+			UI/ConnectionDummy.cpp
+			Output/DSSIaudiooutput.cpp
+			globals.cpp
+			Output/DSSIControl.cpp
+			Output/DSSIControl.h
+			Output/DSSIControlDescription.cpp
+			Output/DSSIControlDescription.h)
 
 	target_link_libraries(zynaddsubfx_dssi
         zynaddsubfx_core
@@ -502,17 +552,33 @@ package_status(PKG_CONFIG_FOUND "PkgConfig" "found"   ${Red})
 package_status(ZLIB_FOUND       "zlib     " "found"   ${Red})
 package_status(MXML_FOUND       "mxml     " "found"   ${Red})
 package_status(FFTW_FOUND       "fftw3    " "found"   ${Red})
-package_status(OssEnable        "OSS      " "enabled" ${Yellow})
-package_status(AlsaEnable       "ALSA     " "enabled" ${Yellow})
-package_status(JackEnable       "JACK     " "enabled" ${Yellow})
-package_status(PaEnable         "PA       " "enabled" ${Yellow})
-package_status(CXXTEST_FOUND    "CxxTest  " "found"   ${Yellow})
-#TODO GUI MODULE
-package_status(LASH_FOUND       "Lash     " "enabled" ${Yellow})
-package_status(DSSI_FOUND       "DSSI     " "enabled" ${Yellow})
-package_status(MinimalEnable    "minimal  " "enabled" ${Yellow})
-package_status(LIBLO_FOUND      "liblo    " "enabled" ${Red})
+package_status(LIBLO_FOUND      "liblo    " "found"   ${Red})
+package_status(X11_FOUND        "x11      " "found"   ${Yellow})
+package_status(HAS_XPM          "xpm      " "found"   ${Yellow})
 package_status(FLTK_FOUND       "fltk     " "found"   ${Yellow})
 package_status(NTK_FOUND        "ntk      " "found"   ${Yellow})
 package_status(X11_FOUND        "x11      " "found"   ${Yellow})
+package_status(OSS_FOUND        "OSS      " "found"   ${Yellow})
+package_status(ALSA_FOUND       "ALSA     " "found"   ${Yellow})
+package_status(JACK_FOUND       "JACK     " "found"   ${Yellow})
+package_status(PORTAUDIO_FOUND  "PA       " "found"   ${Yellow})
+package_status(LASH_FOUND       "Lash     " "found"   ${Yellow})
+package_status(DSSI_FOUND       "DSSI     " "found"   ${Yellow})
+package_status(MinimalEnable    "minimal  " "enabled" ${Yellow})
+package_status(FLTK_FOUND       "fltk     " "found"   ${Yellow})
+package_status(NTK_FOUND        "ntk      " "found"   ${Yellow})
+package_status(X11_FOUND        "x11      " "found"   ${Yellow})
+package_status(CXXTEST_FOUND    "CxxTest  " "found"   ${Yellow})
+package_status(LashEnable       "Lash     " "enabled" ${Yellow})
+package_status(DssiEnable       "DSSI     " "enabled" ${Yellow})
+package_status(LibloEnable      "liblo    " "enabled" ${Red})
+package_status(CompileTests     "tests    " "enabled" ${Yellow})
+package_status(AlsaEnable       "ALSA     " "enabled" ${Yellow})
+package_status(JackEnable       "JACK     " "enabled" ${Yellow})
+package_status(OssEnable        "OSS      " "enabled" ${Yellow})
+package_status(PaEnable         "PA       " "enabled" ${Yellow})
+#TODO GUI MODULE
+package_status(HAVE_ASYNC       "c++ async" "usable"  ${Yellow})
+
+
 message(STATUS "Link libraries: ${ZLIB_LIBRARY} ${FFTW_LIBRARY} ${MXML_LIBRARIES} ${AUDIO_LIBRARIES} ${OS_LIBRARIES}")

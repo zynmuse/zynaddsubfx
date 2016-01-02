@@ -25,6 +25,7 @@
 #include "EnvelopeParams.h"
 #include "FilterParams.h"
 #include "../Misc/Util.h"
+#include "../Misc/Time.h"
 #include <cstdio>
 #include <cmath>
 
@@ -33,9 +34,12 @@
 
 #define rObject SUBnoteParameters
 using namespace rtosc;
-static const rtosc::Ports localPorts = {
+
+#undef rChangeCb
+#define rChangeCb if (obj->time) { obj->last_update_timestamp = obj->time->time(); }
+static const rtosc::Ports SUBnotePorts = {
     rSelf(SUBnoteParameters),
-    rPaste(),
+    rPaste,
     rToggle(Pstereo, "Stereo Enable"),
     rParamZyn(PVolume,  "Volume"),
     rParamZyn(PPanning, "Left Right Panning"),
@@ -53,8 +57,11 @@ static const rtosc::Ports localPorts = {
     //rToggle(),//continue
     rToggle(Pfixedfreq, "Base frequency fixed frequency enable"),
     rParamZyn(PfixedfreqET, "Equal temeperate control for fixed frequency operation"),
+    rParamZyn(PBendAdjust,          "Pitch bend adjustment"),
+    rParamZyn(POffsetHz,            "Voice constant offset"),
 #undef rChangeCb
-#define rChangeCb obj->updateFrequencyMultipliers();
+#define rChangeCb obj->updateFrequencyMultipliers(); if (obj->time) { \
+    obj->last_update_timestamp = obj->time->time(); }
     rParamI(POvertoneSpread.type, rMap(min, 0), rMap(max, 7),
             "Spread of harmonic frequencies"),
     rParamI(POvertoneSpread.par1, rMap(min, 0), rMap(max, 255),
@@ -64,7 +71,7 @@ static const rtosc::Ports localPorts = {
     rParamI(POvertoneSpread.par3, rMap(min, 0), rMap(max, 255),
             "Overtone Parameter"),
 #undef rChangeCb
-#define rChangeCb
+#define rChangeCb if (obj->time) { obj->last_update_timestamp = obj->time->time(); }
     rParamZyn(Pnumstages, rMap(min, 1), rMap(max, 5), "Number of filter stages"),
     rParamZyn(Pbandwidth, "Bandwidth of filters"),
     rParamZyn(Phmagtype, "How the magnitudes are computed (0=linear,1=-60dB,2=-60dB)"),
@@ -93,7 +100,8 @@ static const rtosc::Ports localPorts = {
             d.reply(d.loc, "f", getdetune(obj->PDetuneType, 0, obj->PDetune));
         }},
     //weird stuff for PCoarseDetune
-    {"octave::c:i", rDoc("Note octave shift"), NULL, [](const char *msg, RtData &d)
+    {"octave::c:i", rProp(parameter) rDoc("Note octave shift"), NULL,
+        [](const char *msg, RtData &d)
         {
             SUBnoteParameters *obj = (SUBnoteParameters *)d.obj;
             if(!rtosc_narguments(msg)) {
@@ -106,7 +114,8 @@ static const rtosc::Ports localPorts = {
                 obj->PCoarseDetune = k*1024 + obj->PCoarseDetune%1024;
             }
         }},
-    {"coarsedetune::c:i", rDoc("Note coarse detune"), NULL, [](const char *msg, RtData &d)
+    {"coarsedetune::c:i", rProp(parameter) rDoc("Note coarse detune"), NULL,
+        [](const char *msg, RtData &d)
         {
             SUBnoteParameters *obj = (SUBnoteParameters *)d.obj;
             if(!rtosc_narguments(msg)) {
@@ -121,21 +130,23 @@ static const rtosc::Ports localPorts = {
         }},
 
 };
+#undef rChangeCb
 
-const rtosc::Ports &SUBnoteParameters::ports = localPorts;
+const rtosc::Ports &SUBnoteParameters::ports = SUBnotePorts;
 
-SUBnoteParameters::SUBnoteParameters():Presets()
+SUBnoteParameters::SUBnoteParameters(const AbsTime *time_)
+        : Presets(), time(time_), last_update_timestamp(0)
 {
     setpresettype("Psubsynth");
-    AmpEnvelope = new EnvelopeParams(64, 1);
+    AmpEnvelope = new EnvelopeParams(64, 1, time_);
     AmpEnvelope->ADSRinit_dB(0, 40, 127, 25);
-    FreqEnvelope = new EnvelopeParams(64, 0);
+    FreqEnvelope = new EnvelopeParams(64, 0, time_);
     FreqEnvelope->ASRinit(30, 50, 64, 60);
-    BandWidthEnvelope = new EnvelopeParams(64, 0);
+    BandWidthEnvelope = new EnvelopeParams(64, 0, time_);
     BandWidthEnvelope->ASRinit_bw(100, 70, 64, 60);
 
-    GlobalFilter = new FilterParams(2, 80, 40);
-    GlobalFilterEnvelope = new EnvelopeParams(0, 1);
+    GlobalFilter = new FilterParams(2, 80, 40, time_);
+    GlobalFilterEnvelope = new EnvelopeParams(0, 1, time_);
     GlobalFilterEnvelope->ADSRinit_filter(64, 40, 64, 70, 60, 64);
 
     defaults();
@@ -150,6 +161,8 @@ void SUBnoteParameters::defaults()
 
     Pfixedfreq   = 0;
     PfixedfreqET = 0;
+    PBendAdjust = 88; // 64 + 24
+    POffsetHz = 64;
     Pnumstages   = 2;
     Pbandwidth   = 40;
     Phmagtype    = 0;
@@ -200,80 +213,82 @@ SUBnoteParameters::~SUBnoteParameters()
 
 
 
-void SUBnoteParameters::add2XML(XMLwrapper *xml)
+void SUBnoteParameters::add2XML(XMLwrapper& xml)
 {
-    xml->addpar("num_stages", Pnumstages);
-    xml->addpar("harmonic_mag_type", Phmagtype);
-    xml->addpar("start", Pstart);
+    xml.addpar("num_stages", Pnumstages);
+    xml.addpar("harmonic_mag_type", Phmagtype);
+    xml.addpar("start", Pstart);
 
-    xml->beginbranch("HARMONICS");
+    xml.beginbranch("HARMONICS");
     for(int i = 0; i < MAX_SUB_HARMONICS; ++i) {
-        if((Phmag[i] == 0) && (xml->minimal))
+        if((Phmag[i] == 0) && (xml.minimal))
             continue;
-        xml->beginbranch("HARMONIC", i);
-        xml->addpar("mag", Phmag[i]);
-        xml->addpar("relbw", Phrelbw[i]);
-        xml->endbranch();
+        xml.beginbranch("HARMONIC", i);
+        xml.addpar("mag", Phmag[i]);
+        xml.addpar("relbw", Phrelbw[i]);
+        xml.endbranch();
     }
-    xml->endbranch();
+    xml.endbranch();
 
-    xml->beginbranch("AMPLITUDE_PARAMETERS");
-    xml->addparbool("stereo", Pstereo);
-    xml->addpar("volume", PVolume);
-    xml->addpar("panning", PPanning);
-    xml->addpar("velocity_sensing", PAmpVelocityScaleFunction);
-    xml->beginbranch("AMPLITUDE_ENVELOPE");
+    xml.beginbranch("AMPLITUDE_PARAMETERS");
+    xml.addparbool("stereo", Pstereo);
+    xml.addpar("volume", PVolume);
+    xml.addpar("panning", PPanning);
+    xml.addpar("velocity_sensing", PAmpVelocityScaleFunction);
+    xml.beginbranch("AMPLITUDE_ENVELOPE");
     AmpEnvelope->add2XML(xml);
-    xml->endbranch();
-    xml->endbranch();
+    xml.endbranch();
+    xml.endbranch();
 
-    xml->beginbranch("FREQUENCY_PARAMETERS");
-    xml->addparbool("fixed_freq", Pfixedfreq);
-    xml->addpar("fixed_freq_et", PfixedfreqET);
+    xml.beginbranch("FREQUENCY_PARAMETERS");
+    xml.addparbool("fixed_freq", Pfixedfreq);
+    xml.addpar("fixed_freq_et", PfixedfreqET);
+    xml.addpar("bend_adjust", PBendAdjust);
+    xml.addpar("offset_hz", POffsetHz);
 
-    xml->addpar("detune", PDetune);
-    xml->addpar("coarse_detune", PCoarseDetune);
-    xml->addpar("overtone_spread_type", POvertoneSpread.type);
-    xml->addpar("overtone_spread_par1", POvertoneSpread.par1);
-    xml->addpar("overtone_spread_par2", POvertoneSpread.par2);
-    xml->addpar("overtone_spread_par3", POvertoneSpread.par3);
-    xml->addpar("detune_type", PDetuneType);
+    xml.addpar("detune", PDetune);
+    xml.addpar("coarse_detune", PCoarseDetune);
+    xml.addpar("overtone_spread_type", POvertoneSpread.type);
+    xml.addpar("overtone_spread_par1", POvertoneSpread.par1);
+    xml.addpar("overtone_spread_par2", POvertoneSpread.par2);
+    xml.addpar("overtone_spread_par3", POvertoneSpread.par3);
+    xml.addpar("detune_type", PDetuneType);
 
-    xml->addpar("bandwidth", Pbandwidth);
-    xml->addpar("bandwidth_scale", Pbwscale);
+    xml.addpar("bandwidth", Pbandwidth);
+    xml.addpar("bandwidth_scale", Pbwscale);
 
-    xml->addparbool("freq_envelope_enabled", PFreqEnvelopeEnabled);
-    if((PFreqEnvelopeEnabled != 0) || (!xml->minimal)) {
-        xml->beginbranch("FREQUENCY_ENVELOPE");
+    xml.addparbool("freq_envelope_enabled", PFreqEnvelopeEnabled);
+    if((PFreqEnvelopeEnabled != 0) || (!xml.minimal)) {
+        xml.beginbranch("FREQUENCY_ENVELOPE");
         FreqEnvelope->add2XML(xml);
-        xml->endbranch();
+        xml.endbranch();
     }
 
-    xml->addparbool("band_width_envelope_enabled", PBandWidthEnvelopeEnabled);
-    if((PBandWidthEnvelopeEnabled != 0) || (!xml->minimal)) {
-        xml->beginbranch("BANDWIDTH_ENVELOPE");
+    xml.addparbool("band_width_envelope_enabled", PBandWidthEnvelopeEnabled);
+    if((PBandWidthEnvelopeEnabled != 0) || (!xml.minimal)) {
+        xml.beginbranch("BANDWIDTH_ENVELOPE");
         BandWidthEnvelope->add2XML(xml);
-        xml->endbranch();
+        xml.endbranch();
     }
-    xml->endbranch();
+    xml.endbranch();
 
-    xml->beginbranch("FILTER_PARAMETERS");
-    xml->addparbool("enabled", PGlobalFilterEnabled);
-    if((PGlobalFilterEnabled != 0) || (!xml->minimal)) {
-        xml->beginbranch("FILTER");
+    xml.beginbranch("FILTER_PARAMETERS");
+    xml.addparbool("enabled", PGlobalFilterEnabled);
+    if((PGlobalFilterEnabled != 0) || (!xml.minimal)) {
+        xml.beginbranch("FILTER");
         GlobalFilter->add2XML(xml);
-        xml->endbranch();
+        xml.endbranch();
 
-        xml->addpar("filter_velocity_sensing",
+        xml.addpar("filter_velocity_sensing",
                     PGlobalFilterVelocityScaleFunction);
-        xml->addpar("filter_velocity_sensing_amplitude",
+        xml.addpar("filter_velocity_sensing_amplitude",
                     PGlobalFilterVelocityScale);
 
-        xml->beginbranch("FILTER_ENVELOPE");
+        xml.beginbranch("FILTER_ENVELOPE");
         GlobalFilterEnvelope->add2XML(xml);
-        xml->endbranch();
+        xml.endbranch();
     }
-    xml->endbranch();
+    xml.endbranch();
 }
 
 
@@ -350,6 +365,8 @@ void SUBnoteParameters::paste(SUBnoteParameters &sub)
     doPaste(PDetune);
     doPaste(PCoarseDetune);
     doPaste(PDetuneType);
+    doPaste(PBendAdjust);
+    doPaste(POffsetHz);
     doPaste(PFreqEnvelopeEnabled);
     doPPaste(FreqEnvelope);
     doPaste(PBandWidthEnvelopeEnabled);
@@ -385,96 +402,102 @@ void SUBnoteParameters::paste(SUBnoteParameters &sub)
 
     doPaste(Pbwscale);
     doPaste(Pstart);
+
+    if ( time ) {
+        last_update_timestamp = time->time();
+    }
 }
 
-void SUBnoteParameters::getfromXML(XMLwrapper *xml)
+void SUBnoteParameters::getfromXML(XMLwrapper& xml)
 {
-    Pnumstages = xml->getpar127("num_stages", Pnumstages);
-    Phmagtype  = xml->getpar127("harmonic_mag_type", Phmagtype);
-    Pstart     = xml->getpar127("start", Pstart);
+    Pnumstages = xml.getpar127("num_stages", Pnumstages);
+    Phmagtype  = xml.getpar127("harmonic_mag_type", Phmagtype);
+    Pstart     = xml.getpar127("start", Pstart);
 
-    if(xml->enterbranch("HARMONICS")) {
+    if(xml.enterbranch("HARMONICS")) {
         Phmag[0] = 0;
         for(int i = 0; i < MAX_SUB_HARMONICS; ++i) {
-            if(xml->enterbranch("HARMONIC", i) == 0)
+            if(xml.enterbranch("HARMONIC", i) == 0)
                 continue;
-            Phmag[i]   = xml->getpar127("mag", Phmag[i]);
-            Phrelbw[i] = xml->getpar127("relbw", Phrelbw[i]);
-            xml->exitbranch();
+            Phmag[i]   = xml.getpar127("mag", Phmag[i]);
+            Phrelbw[i] = xml.getpar127("relbw", Phrelbw[i]);
+            xml.exitbranch();
         }
-        xml->exitbranch();
+        xml.exitbranch();
     }
 
-    if(xml->enterbranch("AMPLITUDE_PARAMETERS")) {
-        Pstereo  = xml->getparbool("stereo", Pstereo);
-        PVolume  = xml->getpar127("volume", PVolume);
-        PPanning = xml->getpar127("panning", PPanning);
-        PAmpVelocityScaleFunction = xml->getpar127("velocity_sensing",
+    if(xml.enterbranch("AMPLITUDE_PARAMETERS")) {
+        Pstereo  = xml.getparbool("stereo", Pstereo);
+        PVolume  = xml.getpar127("volume", PVolume);
+        PPanning = xml.getpar127("panning", PPanning);
+        PAmpVelocityScaleFunction = xml.getpar127("velocity_sensing",
                 PAmpVelocityScaleFunction);
-        if(xml->enterbranch("AMPLITUDE_ENVELOPE")) {
+        if(xml.enterbranch("AMPLITUDE_ENVELOPE")) {
             AmpEnvelope->getfromXML(xml);
-            xml->exitbranch();
+            xml.exitbranch();
         }
-        xml->exitbranch();
+        xml.exitbranch();
     }
 
-    if(xml->enterbranch("FREQUENCY_PARAMETERS")) {
-        Pfixedfreq   = xml->getparbool("fixed_freq", Pfixedfreq);
-        PfixedfreqET = xml->getpar127("fixed_freq_et", PfixedfreqET);
+    if(xml.enterbranch("FREQUENCY_PARAMETERS")) {
+        Pfixedfreq   = xml.getparbool("fixed_freq", Pfixedfreq);
+        PfixedfreqET = xml.getpar127("fixed_freq_et", PfixedfreqET);
+        PBendAdjust  = xml.getpar127("bend_adjust", PBendAdjust);
+        POffsetHz  = xml.getpar127("offset_hz", POffsetHz);
 
-        PDetune = xml->getpar("detune", PDetune, 0, 16383);
-        PCoarseDetune = xml->getpar("coarse_detune", PCoarseDetune, 0, 16383);
+        PDetune = xml.getpar("detune", PDetune, 0, 16383);
+        PCoarseDetune = xml.getpar("coarse_detune", PCoarseDetune, 0, 16383);
         POvertoneSpread.type =
-            xml->getpar127("overtone_spread_type", POvertoneSpread.type);
+            xml.getpar127("overtone_spread_type", POvertoneSpread.type);
         POvertoneSpread.par1 =
-            xml->getpar("overtone_spread_par1", POvertoneSpread.par1, 0, 255);
+            xml.getpar("overtone_spread_par1", POvertoneSpread.par1, 0, 255);
         POvertoneSpread.par2 =
-            xml->getpar("overtone_spread_par2", POvertoneSpread.par2, 0, 255);
+            xml.getpar("overtone_spread_par2", POvertoneSpread.par2, 0, 255);
         POvertoneSpread.par3 =
-            xml->getpar("overtone_spread_par3", POvertoneSpread.par3, 0, 255);
+            xml.getpar("overtone_spread_par3", POvertoneSpread.par3, 0, 255);
         updateFrequencyMultipliers();
-        PDetuneType   = xml->getpar127("detune_type", PDetuneType);
+        PDetuneType   = xml.getpar127("detune_type", PDetuneType);
 
-        Pbandwidth = xml->getpar127("bandwidth", Pbandwidth);
-        Pbwscale   = xml->getpar127("bandwidth_scale", Pbwscale);
+        Pbandwidth = xml.getpar127("bandwidth", Pbandwidth);
+        Pbwscale   = xml.getpar127("bandwidth_scale", Pbwscale);
 
-        PFreqEnvelopeEnabled = xml->getparbool("freq_envelope_enabled",
+        PFreqEnvelopeEnabled = xml.getparbool("freq_envelope_enabled",
                 PFreqEnvelopeEnabled);
-        if(xml->enterbranch("FREQUENCY_ENVELOPE")) {
+        if(xml.enterbranch("FREQUENCY_ENVELOPE")) {
             FreqEnvelope->getfromXML(xml);
-            xml->exitbranch();
+            xml.exitbranch();
         }
 
-        PBandWidthEnvelopeEnabled = xml->getparbool(
+        PBandWidthEnvelopeEnabled = xml.getparbool(
                 "band_width_envelope_enabled",
                 PBandWidthEnvelopeEnabled);
-        if(xml->enterbranch("BANDWIDTH_ENVELOPE")) {
+        if(xml.enterbranch("BANDWIDTH_ENVELOPE")) {
             BandWidthEnvelope->getfromXML(xml);
-            xml->exitbranch();
+            xml.exitbranch();
         }
 
-        xml->exitbranch();
+        xml.exitbranch();
     }
 
-    if(xml->enterbranch("FILTER_PARAMETERS")) {
-        PGlobalFilterEnabled = xml->getparbool("enabled", PGlobalFilterEnabled);
-        if(xml->enterbranch("FILTER")) {
+    if(xml.enterbranch("FILTER_PARAMETERS")) {
+        PGlobalFilterEnabled = xml.getparbool("enabled", PGlobalFilterEnabled);
+        if(xml.enterbranch("FILTER")) {
             GlobalFilter->getfromXML(xml);
-            xml->exitbranch();
+            xml.exitbranch();
         }
 
-        PGlobalFilterVelocityScaleFunction = xml->getpar127(
+        PGlobalFilterVelocityScaleFunction = xml.getpar127(
                 "filter_velocity_sensing",
                 PGlobalFilterVelocityScaleFunction);
-        PGlobalFilterVelocityScale = xml->getpar127(
+        PGlobalFilterVelocityScale = xml.getpar127(
                 "filter_velocity_sensing_amplitude",
                 PGlobalFilterVelocityScale);
 
-        if(xml->enterbranch("FILTER_ENVELOPE")) {
+        if(xml.enterbranch("FILTER_ENVELOPE")) {
             GlobalFilterEnvelope->getfromXML(xml);
-            xml->exitbranch();
+            xml.exitbranch();
         }
 
-        xml->exitbranch();
+        xml.exitbranch();
     }
 }

@@ -25,12 +25,13 @@
 #include "../Misc/Util.h"
 #include "../Misc/MiddleWare.h"
 #include "../Misc/Master.h"
+#include "../Misc/Config.h"
 
 #include "minimal.h"
 
-//! global variables required for linking:
-const char *instance_name = 0;
-SYNTH_T  *synth;
+// global variables required for linking:
+// TODO: make them class members?
+//SYNTH_T  *synth;
 MiddleWare *middleware;
 #if USE_NSM
 #include "../UI/NSM.H"
@@ -64,21 +65,19 @@ set_sample_rate(44100); // TODO!!
     std::clog << "Starting zynaddsubfx..." << std::endl;
     std::clog << "  (this is a good sign...)" << std::endl;
     
-	synth = new SYNTH_T;
+	SYNTH_T synth;
 	//synth->samplerate = sample_rate; // TODO!!!
 	
 	//    this->sampleRate  = srate;
 	//    this->banksInited = false;
 	
-	config.init();
+	config = new Config();
+	config->init();
 	
 	sprng(::time(nullptr));
-	denormalkillbuf = new float [synth->buffersize];
-	for(int i = 0; i < synth->buffersize; i++)
-	 denormalkillbuf[i] = (RND - 0.5f) * 1e-16;
 	
-	synth->alias();
-	middleware = new MiddleWare();
+	synth.alias();
+	middleware = new MiddleWare(std::move(synth), config);
 	middleware->spawnMaster()->bank.rescanforbanks();
 /*	loadThread = new std::thread([this]() {
 		while(middleware) {
@@ -108,26 +107,28 @@ void zynaddsubfx_t::run_synth(unsigned long ,
 		snd_seq_event_t *,
 		unsigned long )
 {
+    const std::size_t buffersize = middleware->getSynth().buffersize;
+
     if(samples_played <= time())
     {
     Master *master = middleware->spawnMaster();
 
 //    io::mlog << "write space: " << data.write_space()
 //        << " samples: " << sample_count << io::endl;
-    
-    if( data.write_space() < (std::size_t)synth->buffersize )
+
+    if( data.write_space() < buffersize )
         throw "warning: not enough write space! :-(";
     
     io::mlog << "buf1: " << &data << io::endl;
 
     master_functor mf { master, zynaddsubfx_t::sample_rate };
-    data.write_func(mf, synth->buffersize); // TODO: not sure about this value
-    samples_played += synth->buffersize;
+    data.write_func(mf, buffersize); // TODO: not sure about this value
+    samples_played += buffersize;
     }
     
     
      // TODO: not sure about this value:
-    set_next_time(time() + synth->buffersize);
+    set_next_time(time() + buffersize);
     
 }
 
@@ -176,7 +177,7 @@ void zyn_tree_t::events_t_port_t::on_read(sample_no_t pos)
 		// -> TODO?? probably the above comment is deprecated
 		std::pair<int, music_note_properties> p2 = notes_in::data->lines[rch.first][rch.second];
 
-		io::mlog << "first, second: " << p2.first << ", " << p2.second << io::endl;
+		io::mlog << "first, second: " << p2.first << ", " << p2.second.value() << io::endl;
 
 		if(p2.first >= 0) // i.e. note on
 		{

@@ -1,3 +1,4 @@
+#pragma once
 #include <FL/Fl_Box.H>
 #include "../Params/EnvelopeParams.h"
 #include "Fl_Osc_Widget.H"
@@ -12,17 +13,18 @@
 #define ENV_ADSR_FILTER 4
 #define ENV_ADSR_BW 5
 
-class EnvelopeFreeEdit : public Fl_Box, Fl_Osc_Widget
+class EnvelopeFreeEdit : public Fl_Box, public Fl_Osc_Widget
 {
     public:
         EnvelopeFreeEdit(int x,int y, int w, int h, const char *label=0);
         void init(void);
         void setpair(Fl_Box *pair_);
-        int handle(int event);
+        int handle(int event) override;
 
-        void draw(void);
+        void draw(void) override;
         void OSC_raw(const char *msg) override;
-        void update(void);
+        void update(void) override;
+        void rebase(std::string new_base) override;
 
 
         int lastpoint;
@@ -38,11 +40,13 @@ class EnvelopeFreeEdit : public Fl_Box, Fl_Osc_Widget
         Fl_Box *pair; //XXX what the heck is this?
 
         //cursor state
-        int currentpoint, cpx, cpdt;
+        int currentpoint, cpx, cpy, cpdt, cpval;
 
         //The Points
         char Penvdt[MAX_ENVELOPE_POINTS];
         char Penvval[MAX_ENVELOPE_POINTS];
         //The Sustain point
         char Penvsustain;
+        int button_state;
+        int mod_state;
 };

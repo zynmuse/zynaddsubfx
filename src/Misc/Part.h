@@ -27,6 +27,7 @@
 
 #include "../globals.h"
 #include "../Params/Controller.h"
+#include "../Containers/NotePool.h"
 
 #include <functional>
 
@@ -37,7 +38,9 @@ class Part
         /**Constructor
          * @param microtonal_ Pointer to the microtonal object
          * @param fft_ Pointer to the FFTwrapper*/
-        Part(Allocator &alloc, Microtonal *microtonal_, FFTwrapper *fft_);
+        Part(Allocator &alloc, const SYNTH_T &synth, const AbsTime &time,
+             const int& gzip_compression, const int& interpolation,
+             Microtonal *microtonal_, FFTwrapper *fft_);
         /**Destructor*/
         ~Part();
 
@@ -45,7 +48,9 @@ class Part
         void cloneTraits(Part &part) const REALTIME;
 
         // Midi commands implemented
-        void NoteOn(unsigned char note,
+
+        //returns true when note is successfully applied
+        bool NoteOn(unsigned char note,
                     unsigned char velocity,
                     int masterkeyshift) REALTIME;
         void NoteOff(unsigned char note) REALTIME;
@@ -66,8 +71,8 @@ class Part
         int saveXML(const char *filename);
         int loadXMLinstrument(const char *filename);
 
-        void add2XML(XMLwrapper *xml);
-        void add2XMLinstrument(XMLwrapper *xml);
+        void add2XML(XMLwrapper& xml);
+        void add2XMLinstrument(XMLwrapper& xml);
 
         void defaults();
         void defaultsinstrument();
@@ -78,13 +83,14 @@ class Part
         void initialize_rt(void) REALTIME;
         void kill_rt(void) REALTIME;
 
-        void getfromXML(XMLwrapper *xml);
-        void getfromXMLinstrument(XMLwrapper *xml);
+        void getfromXML(XMLwrapper& xml);
+        void getfromXMLinstrument(XMLwrapper& xml);
 
         void cleanup(bool final = false);
 
         //the part's kit
         struct Kit {
+            Part              *parent;
             bool               Penabled, Pmuted;
             unsigned char      Pminkey, Pmaxkey;
             char              *Pname;
@@ -93,6 +99,10 @@ class Part
             ADnoteParameters  *adpars;
             SUBnoteParameters *subpars;
             PADnoteParameters *padpars;
+
+            bool    active(void) const;
+            uint8_t sendto(void) const;
+            bool    validNote(char note) const;
 
             const static rtosc::Ports &ports;
         } kit[NUM_KIT_ITEMS];
@@ -115,6 +125,8 @@ class Part
         unsigned char Pveloffs; //velocity offset
         bool Pnoteon; //if the part receives NoteOn messages
         int Pkitmode; //if the kitmode is enabled
+
+        //XXX consider deprecating drum mode
         bool Pdrummode; //if all keys are mapped and the system is 12tET (used for drums)
 
         bool Ppolymode; //Part mode - 0=monophonic , 1=polyphonic
@@ -153,25 +165,22 @@ class Part
         const static rtosc::Ports &ports;
 
     private:
-        void RunNote(unsigned k);
-        void KillNotePos(int pos);
-        void ReleaseNotePos(int pos);
         void MonoMemRenote(); // MonoMem stuff.
+        float getBaseFreq(int note, int keyshift) const;
+        float getVelocity(uint8_t velocity, uint8_t velocity_sense,
+                uint8_t velocity_offset) const;
+        void verifyKeyMode(void);
+        bool isPolyMode(void)   const {return Ppolymode;}
+        bool isMonoMode(void)   const {return !Ppolymode  && !Plegatomode;};
+        bool isLegatoMode(void) const {return Plegatomode && !Pdrummode;}
+        bool isNonKit(void)     const {return Pkitmode == 0;}
+        bool isMultiKit(void)   const {return Pkitmode == 1;}
+        bool isSingleKit(void)  const {return Pkitmode == 2;}
 
-        int killallnotes; //is set to 1 if I want to kill all notes
+        bool killallnotes;
 
-        struct PartNotes {
-            NoteStatus status;
-            int note; //if there is no note playing, the "note"=-1
-            int itemsplaying;
-            struct {
-                SynthNote *adnote, *subnote, *padnote;
-                int sendtoparteffect;
-            } kititem[NUM_KIT_ITEMS];
-            int time;
-        };
+        NotePool notePool;
 
-        int  lastpos, lastposb; // To keep track of previously used pos and posb.
         bool lastlegatomodevalid; // To keep track of previous legatomodevalid.
 
         // MonoMem stuff
@@ -191,12 +200,13 @@ class Part
            store the velocity and masterkeyshift values of a given note (the list only store note values).
            For example 'monomem[note].velocity' would be the velocity value of the note 'note'.*/
 
-        PartNotes partnote[POLYPHONY];
-
         float oldfreq;    //this is used for portamento
         Microtonal *microtonal;
         FFTwrapper *fft;
         Allocator  &memory;
+        const SYNTH_T &synth;
+        const AbsTime &time;
+        const int &gzip_compression, &interpolation;
 };
 
 #endif

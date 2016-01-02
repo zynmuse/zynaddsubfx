@@ -5,6 +5,8 @@
 #include "MidiIn.h"
 #include "AudioOut.h"
 #include "WavEngine.h"
+#include "../Misc/Config.h"
+#include <cstring>
 #include <iostream>
 #include <algorithm>
 using std::string;
@@ -29,11 +31,12 @@ bool   Nio::pidInClientName = false;
 string Nio::defaultSource   = IN_DEFAULT;
 string Nio::defaultSink     = OUT_DEFAULT;
 
-void Nio::init(class Master *master)
+void Nio::init(const SYNTH_T &synth, const oss_devs_t& oss_devs,
+               class Master *master)
 {
     in  = &InMgr::getInstance(); //Enable input wrapper
-    out = &OutMgr::getInstance(); //Initialize the Output Systems
-    eng = &EngineMgr::getInstance(); //Initialize The Engines
+    out = &OutMgr::getInstance(&synth); //Initialize the Output Systems
+    eng = &EngineMgr::getInstance(&synth, &oss_devs); //Initialize the Engines
 
     in->setMaster(master);
     out->setMaster(master);
@@ -49,7 +52,8 @@ bool Nio::start()
 
 void Nio::stop()
 {
-    eng->stop();
+    if(eng)
+        eng->stop();
 }
 
 void Nio::setDefaultSource(string name)
@@ -118,6 +122,19 @@ string Nio::getSink()
 #include <jack/jack.h>
 void Nio::preferedSampleRate(unsigned &rate)
 {
+#if __linux__
+    //avoid checking in with jack if it's off
+    FILE *ps = popen("ps aux", "r");
+    char buffer[4096];
+    while(fgets(buffer, sizeof(buffer), ps))
+        if(strstr(buffer, "jack"))
+            break;
+    fclose(ps);
+
+    if(!strstr(buffer, "jack"))
+        return;
+#endif
+
     jack_client_t *client = jack_client_open("temp-client",
                                              JackNoStartServer, 0);
     if(client) {

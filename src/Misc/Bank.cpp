@@ -46,16 +46,17 @@
 
 using namespace std;
 
-Bank::Bank()
-    :bankpos(0), defaultinsname(" ")
+Bank::Bank(Config *config)
+    :bankpos(0), defaultinsname(" "), config(config),
+     bank_msb(0), bank_lsb(0)
 {
     clearbank();
     bankfiletitle = dirname;
     rescanforbanks();
-    loadbank(config.cfg.currentBankDir);
+    loadbank(config->cfg.currentBankDir);
 
     for(unsigned i=0; i<banks.size(); ++i) {
-        if(banks[i].dir == config.cfg.currentBankDir) {
+        if(banks[i].dir == config->cfg.currentBankDir) {
             bankpos = i;
             break;
         }
@@ -169,14 +170,9 @@ int Bank::savetoslot(unsigned int ninstrument, Part *part)
 
     snprintf(tmpfilename,
              maxfilename,
-             "%4d-%s",
+             "%04d-%s",
              ninstrument + 1,
              (char *)part->Pname);
-
-    //add the zeroes at the start of filename
-    for(int i = 0; i < 4; ++i)
-        if(tmpfilename[i] == ' ')
-            tmpfilename[i] = '0';
 
     string filename = dirname + '/' + legalizeFilename(tmpfilename) + ".xiz";
 
@@ -221,6 +217,12 @@ int Bank::loadbank(string bankdirname)
 
     if(dir == NULL)
         return -1;
+
+    //set msb when possible
+    bank_msb = 0;
+    for(unsigned i=0; i<banks.size(); i++)
+        if(banks[i].dir == bankdirname)
+            bank_msb = i;
 
     dirname = bankdirname;
 
@@ -270,7 +272,7 @@ int Bank::loadbank(string bankdirname)
     closedir(dir);
 
     if(!dirname.empty())
-        config.cfg.currentBankDir = dirname;
+        config->cfg.currentBankDir = dirname;
 
     return 0;
 }
@@ -281,14 +283,18 @@ int Bank::loadbank(string bankdirname)
 int Bank::newbank(string newbankdirname)
 {
     string bankdir;
-    bankdir = config.cfg.bankRootDirList[0];
+    bankdir = config->cfg.bankRootDirList[0];
 
     if(((bankdir[bankdir.size() - 1]) != '/')
        && ((bankdir[bankdir.size() - 1]) != '\\'))
         bankdir += "/";
 
     bankdir += newbankdirname;
+#ifdef _WIN32
+    if(mkdir(bankdir.c_str()) < 0)
+#else
     if(mkdir(bankdir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) < 0)
+#endif
         return -1;
 
     const string tmpfilename = bankdir + '/' + FORCE_BANK_DIR_FILE;
@@ -357,8 +363,8 @@ void Bank::rescanforbanks()
     banks.clear();
 
     for(int i = 0; i < MAX_BANK_ROOT_DIRS; ++i)
-        if(!config.cfg.bankRootDirList[i].empty())
-            scanrootdir(config.cfg.bankRootDirList[i]);
+        if(!config->cfg.bankRootDirList[i].empty())
+            scanrootdir(config->cfg.bankRootDirList[i]);
 
     //sort the banks
     sort(banks.begin(), banks.end());
@@ -379,6 +385,18 @@ void Bank::rescanforbanks()
             else
                 dupl = 0;
         }
+}
+
+void Bank::setMsb(uint8_t msb)
+{
+    if(msb < banks.size() && banks[msb].dir != bankfiletitle)
+        loadbank(banks[msb].dir);
+}
+
+void Bank::setLsb(uint8_t lsb)
+{
+    //should only involve values of 0/1 for the time being...
+    bank_lsb = limit<uint8_t>(lsb,0,1);
 }
 
 

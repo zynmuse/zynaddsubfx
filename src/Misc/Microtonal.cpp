@@ -58,16 +58,16 @@ const rtosc::Ports Microtonal::ports = {
     rParamZyn(Pmiddlenote, "Scale degree 0 note"),
 
     //TODO check to see if this should be exposed
-    rParamZyn(Pmapsize, "UNDOCUMENTED"),
+    rParamZyn(Pmapsize, "Size of key map"),
     rToggle(Pmappingenabled, "Mapping Enable"),
 
-    rParams(Pmapping, "UNDOCUMENTED"),
+    rParams(Pmapping, 128, "Mapping of keys"),
     rParamZyn(Pglobalfinedetune, "Fine detune for all notes"),
 
     rString(Pname, MICROTONAL_MAX_NAME_LEN, "Microtonal Name"),
     rString(Pcomment, MICROTONAL_MAX_NAME_LEN, "Microtonal Name"),
 
-    {"octavesize:", 0, 0, [](const char*, RtData &d)
+    {"octavesize:", rDoc("Get octave size"), 0, [](const char*, RtData &d)
         {
             Microtonal &m = *(Microtonal*)d.obj;
             d.reply(d.loc, "i", m.getoctavesize());
@@ -75,7 +75,8 @@ const rtosc::Ports Microtonal::ports = {
 };
 
 
-Microtonal::Microtonal()
+Microtonal::Microtonal(const int &gzip_compression)
+    : gzip_compression(gzip_compression)
 {
     defaults();
 }
@@ -565,87 +566,87 @@ int Microtonal::loadkbm(const char *filename)
 
 
 
-void Microtonal::add2XML(XMLwrapper *xml) const
+void Microtonal::add2XML(XMLwrapper& xml) const
 {
-    xml->addparstr("name", (char *) Pname);
-    xml->addparstr("comment", (char *) Pcomment);
+    xml.addparstr("name", (char *) Pname);
+    xml.addparstr("comment", (char *) Pcomment);
 
-    xml->addparbool("invert_up_down", Pinvertupdown);
-    xml->addpar("invert_up_down_center", Pinvertupdowncenter);
+    xml.addparbool("invert_up_down", Pinvertupdown);
+    xml.addpar("invert_up_down_center", Pinvertupdowncenter);
 
-    xml->addparbool("enabled", Penabled);
-    xml->addpar("global_fine_detune", Pglobalfinedetune);
+    xml.addparbool("enabled", Penabled);
+    xml.addpar("global_fine_detune", Pglobalfinedetune);
 
-    xml->addpar("a_note", PAnote);
-    xml->addparreal("a_freq", PAfreq);
+    xml.addpar("a_note", PAnote);
+    xml.addparreal("a_freq", PAfreq);
 
-    if((Penabled == 0) && (xml->minimal))
+    if((Penabled == 0) && (xml.minimal))
         return;
 
-    xml->beginbranch("SCALE");
-    xml->addpar("scale_shift", Pscaleshift);
-    xml->addpar("first_key", Pfirstkey);
-    xml->addpar("last_key", Plastkey);
-    xml->addpar("middle_note", Pmiddlenote);
+    xml.beginbranch("SCALE");
+    xml.addpar("scale_shift", Pscaleshift);
+    xml.addpar("first_key", Pfirstkey);
+    xml.addpar("last_key", Plastkey);
+    xml.addpar("middle_note", Pmiddlenote);
 
-    xml->beginbranch("OCTAVE");
-    xml->addpar("octave_size", octavesize);
+    xml.beginbranch("OCTAVE");
+    xml.addpar("octave_size", octavesize);
     for(int i = 0; i < octavesize; ++i) {
-        xml->beginbranch("DEGREE", i);
+        xml.beginbranch("DEGREE", i);
         if(octave[i].type == 1)
-            xml->addparreal("cents", octave[i].tuning);
+            xml.addparreal("cents", octave[i].tuning);
         ;
         if(octave[i].type == 2) {
-            xml->addpar("numerator", octave[i].x1);
-            xml->addpar("denominator", octave[i].x2);
+            xml.addpar("numerator", octave[i].x1);
+            xml.addpar("denominator", octave[i].x2);
         }
-        xml->endbranch();
+        xml.endbranch();
     }
-    xml->endbranch();
+    xml.endbranch();
 
-    xml->beginbranch("KEYBOARD_MAPPING");
-    xml->addpar("map_size", Pmapsize);
-    xml->addpar("mapping_enabled", Pmappingenabled);
+    xml.beginbranch("KEYBOARD_MAPPING");
+    xml.addpar("map_size", Pmapsize);
+    xml.addpar("mapping_enabled", Pmappingenabled);
     for(int i = 0; i < Pmapsize; ++i) {
-        xml->beginbranch("KEYMAP", i);
-        xml->addpar("degree", Pmapping[i]);
-        xml->endbranch();
+        xml.beginbranch("KEYMAP", i);
+        xml.addpar("degree", Pmapping[i]);
+        xml.endbranch();
     }
 
-    xml->endbranch();
-    xml->endbranch();
+    xml.endbranch();
+    xml.endbranch();
 }
 
-void Microtonal::getfromXML(XMLwrapper *xml)
+void Microtonal::getfromXML(XMLwrapper& xml)
 {
-    xml->getparstr("name", (char *) Pname, MICROTONAL_MAX_NAME_LEN);
-    xml->getparstr("comment", (char *) Pcomment, MICROTONAL_MAX_NAME_LEN);
+    xml.getparstr("name", (char *) Pname, MICROTONAL_MAX_NAME_LEN);
+    xml.getparstr("comment", (char *) Pcomment, MICROTONAL_MAX_NAME_LEN);
 
-    Pinvertupdown = xml->getparbool("invert_up_down", Pinvertupdown);
-    Pinvertupdowncenter = xml->getpar127("invert_up_down_center",
+    Pinvertupdown = xml.getparbool("invert_up_down", Pinvertupdown);
+    Pinvertupdowncenter = xml.getpar127("invert_up_down_center",
                                          Pinvertupdowncenter);
 
-    Penabled = xml->getparbool("enabled", Penabled);
-    Pglobalfinedetune = xml->getpar127("global_fine_detune", Pglobalfinedetune);
+    Penabled = xml.getparbool("enabled", Penabled);
+    Pglobalfinedetune = xml.getpar127("global_fine_detune", Pglobalfinedetune);
 
-    PAnote = xml->getpar127("a_note", PAnote);
-    PAfreq = xml->getparreal("a_freq", PAfreq, 1.0f, 10000.0f);
+    PAnote = xml.getpar127("a_note", PAnote);
+    PAfreq = xml.getparreal("a_freq", PAfreq, 1.0f, 10000.0f);
 
-    if(xml->enterbranch("SCALE")) {
-        Pscaleshift = xml->getpar127("scale_shift", Pscaleshift);
-        Pfirstkey   = xml->getpar127("first_key", Pfirstkey);
-        Plastkey    = xml->getpar127("last_key", Plastkey);
-        Pmiddlenote = xml->getpar127("middle_note", Pmiddlenote);
+    if(xml.enterbranch("SCALE")) {
+        Pscaleshift = xml.getpar127("scale_shift", Pscaleshift);
+        Pfirstkey   = xml.getpar127("first_key", Pfirstkey);
+        Plastkey    = xml.getpar127("last_key", Plastkey);
+        Pmiddlenote = xml.getpar127("middle_note", Pmiddlenote);
 
-        if(xml->enterbranch("OCTAVE")) {
-            octavesize = xml->getpar127("octave_size", octavesize);
+        if(xml.enterbranch("OCTAVE")) {
+            octavesize = xml.getpar127("octave_size", octavesize);
             for(int i = 0; i < octavesize; ++i) {
-                if(xml->enterbranch("DEGREE", i) == 0)
+                if(xml.enterbranch("DEGREE", i) == 0)
                     continue;
                 octave[i].x2     = 0;
-                octave[i].tuning = xml->getparreal("cents", octave[i].tuning);
-                octave[i].x1     = xml->getpar127("numerator", octave[i].x1);
-                octave[i].x2     = xml->getpar127("denominator", octave[i].x2);
+                octave[i].tuning = xml.getparreal("cents", octave[i].tuning);
+                octave[i].x1     = xml.getpar127("numerator", octave[i].x1);
+                octave[i].x2     = xml.getpar127("denominator", octave[i].x2);
 
                 if(octave[i].x2 != 0)
                     octave[i].type = 2;
@@ -654,27 +655,27 @@ void Microtonal::getfromXML(XMLwrapper *xml)
                     //populate fields for display
                     float x = logf(octave[i].tuning) / LOG_2 * 1200.0f;
                     octave[i].x1 = (int) floor(x);
-                    octave[i].x2 = (int) (floor(fmodf(x, 1.0f) * 1e6));
+                    octave[i].x2 = (int) (floor((x-octave[i].x1) * 1.0e6));
                 }
 
 
-                xml->exitbranch();
+                xml.exitbranch();
             }
-            xml->exitbranch();
+            xml.exitbranch();
         }
 
-        if(xml->enterbranch("KEYBOARD_MAPPING")) {
-            Pmapsize = xml->getpar127("map_size", Pmapsize);
-            Pmappingenabled = xml->getpar127("mapping_enabled", Pmappingenabled);
+        if(xml.enterbranch("KEYBOARD_MAPPING")) {
+            Pmapsize = xml.getpar127("map_size", Pmapsize);
+            Pmappingenabled = xml.getpar127("mapping_enabled", Pmappingenabled);
             for(int i = 0; i < Pmapsize; ++i) {
-                if(xml->enterbranch("KEYMAP", i) == 0)
+                if(xml.enterbranch("KEYMAP", i) == 0)
                     continue;
-                Pmapping[i] = xml->getpar127("degree", Pmapping[i]);
-                xml->exitbranch();
+                Pmapping[i] = xml.getpar127("degree", Pmapping[i]);
+                xml.exitbranch();
             }
-            xml->exitbranch();
+            xml.exitbranch();
         }
-        xml->exitbranch();
+        xml.exitbranch();
     }
 }
 
@@ -682,30 +683,26 @@ void Microtonal::getfromXML(XMLwrapper *xml)
 
 int Microtonal::saveXML(const char *filename) const
 {
-    XMLwrapper *xml = new XMLwrapper();
+    XMLwrapper xml;
 
-    xml->beginbranch("MICROTONAL");
+    xml.beginbranch("MICROTONAL");
     add2XML(xml);
-    xml->endbranch();
+    xml.endbranch();
 
-    int result = xml->saveXMLfile(filename);
-    delete (xml);
-    return result;
+    return xml.saveXMLfile(filename, gzip_compression);
 }
 
 int Microtonal::loadXML(const char *filename)
 {
-    XMLwrapper *xml = new XMLwrapper();
-    if(xml->loadXMLfile(filename) < 0) {
-        delete (xml);
+    XMLwrapper xml;
+    if(xml.loadXMLfile(filename) < 0) {
         return -1;
     }
 
-    if(xml->enterbranch("MICROTONAL") == 0)
+    if(xml.enterbranch("MICROTONAL") == 0)
         return -10;
     getfromXML(xml);
-    xml->exitbranch();
+    xml.exitbranch();
 
-    delete (xml);
     return 0;
 }

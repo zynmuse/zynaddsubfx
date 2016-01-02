@@ -27,11 +27,12 @@
 #include "../Misc/XMLwrapper.h"
 #include "Presets.h"
 
-class EnvelopeParams
+class EnvelopeParams:public Presets
 {
     public:
         EnvelopeParams(unsigned char Penvstretch_=64,
-                       unsigned char Pforcedrelease_=0);
+                       unsigned char Pforcedrelease_=0,
+                       const AbsTime *time_ = nullptr);
         ~EnvelopeParams();
         void paste(const EnvelopeParams &ep);
         void ADSRinit(char A_dt, char D_dt, char S_val, char R_dt);
@@ -46,17 +47,17 @@ class EnvelopeParams
         void ASRinit_bw(char A_val, char A_dt, char R_val, char R_dt);
         void converttofree();
 
-        void add2XML(XMLwrapper *xml);
+        void add2XML(XMLwrapper& xml);
         void defaults();
-        void getfromXML(XMLwrapper *xml);
+        void getfromXML(XMLwrapper& xml);
 
         float getdt(char i) const;
         static float dt(char val);
 
         /* MIDI Parameters */
-        unsigned char Pfreemode; //1 daca este in modul free sau 0 daca este in mod ADSR,ASR,...
+        unsigned char Pfreemode; //1 for free mode, 0 otherwise
         unsigned char Penvpoints;
-        unsigned char Penvsustain; //127 pentru dezactivat
+        unsigned char Penvsustain; //127 for disabled
         unsigned char Penvdt[MAX_ENVELOPE_POINTS];
         unsigned char Penvval[MAX_ENVELOPE_POINTS];
         unsigned char Penvstretch; //64=normal stretch (piano-like), 0=no stretch
@@ -73,6 +74,9 @@ class EnvelopeParams
                      // 3 for ASR parameters (frequency LFO)
                      // 4 for ADSR_filter parameters (filter parameters)
                      // 5 for ASR_bw parameters (bandwidth parameters)
+
+        const AbsTime *time;
+        int64_t last_update_timestamp;
 
         static const rtosc::Ports &ports;
     private:

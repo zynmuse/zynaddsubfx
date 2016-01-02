@@ -30,9 +30,11 @@
 class PADnote:public SynthNote
 {
     public:
-        PADnote(PADnoteParameters *parameters, SynthParams pars);
+        PADnote(const PADnoteParameters *parameters, SynthParams pars,
+                const int &interpolation);
         ~PADnote();
 
+        SynthNote *cloneLegato(void);
         void legatonote(LegatoParams pars);
 
         int noteout(float *outl, float *outr);
@@ -50,6 +52,8 @@ class PADnote:public SynthNote
         float poslo;
 
         float basefreq;
+        float BendAdjust;
+        float OffsetHz;
         bool  firsttime;
 
         int nsample, portamento;
@@ -83,6 +87,7 @@ class PADnote:public SynthNote
             Envelope *AmpEnvelope;
             LFO      *AmpLfo;
 
+            float Fadein_adjustment;
             struct {
                 int   Enabled;
                 float initialvalue, dt, t;
@@ -104,6 +109,7 @@ class PADnote:public SynthNote
 
 
         float globaloldamplitude, globalnewamplitude, velocity, realfreq;
+        const int& interpolation;
 };
 
 

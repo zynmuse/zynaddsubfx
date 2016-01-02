@@ -13,7 +13,7 @@
 
 class FilterParams;
 
-class FormantFilterGraph : public Fl_Box, Fl_Osc_Widget {
+class FormantFilterGraph : public Fl_Box, public Fl_Osc_Widget {
     public:
         FormantFilterGraph(int x,int y, int w, int h, const char *label=0);
         void init(int *nvowel_, int *nformant_);
@@ -23,6 +23,8 @@ class FormantFilterGraph : public Fl_Box, Fl_Osc_Widget {
 
         void OSC_value(int x, const char *) override;
         void OSC_value(unsigned x, void *v) override;
+
+        void rebase(std::string new_base) override;
 
         void updateVowel(int);
         void updateFormant(int);

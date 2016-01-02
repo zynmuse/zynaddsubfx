@@ -4,7 +4,7 @@
 #include "Fl_Osc_Widget.H"
 #include <string>
 
-class Fl_Osc_DialF:public WidgetPDial, Fl_Osc_Widget
+class Fl_Osc_DialF:public WidgetPDial, public Fl_Osc_Widget
 {
 
     public:
@@ -16,6 +16,9 @@ class Fl_Osc_DialF:public WidgetPDial, Fl_Osc_Widget
         //Refetch parameter information
         void update(void);
         void callback(Fl_Callback *cb, void *p = NULL);
+
+        //Midi learn handler
+        int handle(int);
 
         void cb(void);
     private:

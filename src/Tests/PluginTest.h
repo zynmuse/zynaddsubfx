@@ -43,6 +43,7 @@ MiddleWare *middleware;
 class PluginTest:public CxxTest::TestSuite
 {
     public:
+        Config config;
         void setUp() {
             synth = new SYNTH_T;
             synth->buffersize = 256;
@@ -56,14 +57,8 @@ class PluginTest:public CxxTest::TestSuite
             for(int i = 0; i < synth->buffersize; ++i)
                 outR[i] = 0.0f;
 
-            //next the bad global variables that for some reason have not been properly placed in some
-            //initialization routine, but rather exist as cryptic oneliners in main.cpp:
-            denormalkillbuf = new float[synth->buffersize];
-            for(int i = 0; i < synth->buffersize; ++i)
-                denormalkillbuf[i] = 0;
-
             for(int i = 0; i < 16; ++i)
-                master[i] = new Master();
+                master[i] = new Master(*synth, &config);
         }
 
         void tearDown() {
@@ -111,7 +106,7 @@ class PluginTest:public CxxTest::TestSuite
             const string fname = string(SOURCE_DIR) + "/guitar-adnote.xmz";
             const string fdata = loadfile(fname);
             char *result = NULL;
-            master[0]->putalldata((char*)fdata.c_str(), fdata.length());
+            master[0]->putalldata((char*)fdata.c_str());
             int res = master[0]->getalldata(&result);
 
             TS_ASSERT_EQUALS((int)(fdata.length()+1), res);

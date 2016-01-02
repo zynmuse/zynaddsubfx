@@ -22,19 +22,26 @@
 
 #include <cmath>
 #include <cstdlib>
+#include <cassert>
 #include <rtosc/ports.h>
 #include <rtosc/port-sugar.h>
 
 #include "EnvelopeParams.h"
 #include "../Misc/Util.h"
+#include "../Misc/Time.h"
 
 #define rObject EnvelopeParams
 using namespace rtosc;
 
 static const rtosc::Ports localPorts = {
     rSelf(EnvelopeParams),
-    rPaste(),
+    rPaste,
+#undef  rChangeCb
+#define rChangeCb if(!obj->Pfreemode) obj->converttofree(); if (obj->time) { \
+        obj->last_update_timestamp = obj->time->time(); }
     rToggle(Pfreemode, "Complex Envelope Definitions"),
+#undef  rChangeCb
+#define rChangeCb if (obj->time) { obj->last_update_timestamp = obj->time->time(); }
     rParamZyn(Penvpoints, rProp(internal), "Number of points in complex definition"),
     rParamZyn(Penvsustain, rProp(internal), "Location of the sustain point"),
     rParams(Penvdt,  MAX_ENVELOPE_POINTS, "Envelope Delay Times"),
@@ -89,11 +96,14 @@ static const rtosc::Ports localPorts = {
 
         }},
 };
+#undef  rChangeCb
 
 const rtosc::Ports &EnvelopeParams::ports = localPorts;
 
 EnvelopeParams::EnvelopeParams(unsigned char Penvstretch_,
-        unsigned char Pforcedrelease_)
+                               unsigned char Pforcedrelease_,
+                               const AbsTime *time_):
+        time(time_), last_update_timestamp(0)
 {
     PA_dt  = 10;
     PD_dt  = 10;
@@ -122,13 +132,34 @@ EnvelopeParams::EnvelopeParams(unsigned char Penvstretch_,
 EnvelopeParams::~EnvelopeParams()
 {}
 
+#define COPY(y) this->y = ep.y
 void EnvelopeParams::paste(const EnvelopeParams &ep)
 {
-    //Avoid undefined behavior
-    if(&ep == this)
-        return;
-    memcpy((char*)this, (const char*)&ep, sizeof(*this));
+
+    COPY(Pfreemode);
+    COPY(Penvpoints);
+    COPY(Penvsustain);
+    for(int i=0; i<MAX_ENVELOPE_POINTS; ++i) {
+        this->Penvdt[i]  = ep.Penvdt[i];
+        this->Penvval[i] = ep.Penvval[i];
+    }
+    COPY(Penvstretch);
+    COPY(Pforcedrelease);
+    COPY(Plinearenvelope);
+
+    COPY(PA_dt);
+    COPY(PD_dt);
+    COPY(PR_dt);
+    COPY(PA_val);
+    COPY(PD_val);
+    COPY(PS_val);
+    COPY(PR_val);
+
+    if ( time ) {
+        last_update_timestamp = time->time();
+    }
 }
+#undef COPY
 
 float EnvelopeParams::getdt(char i) const
 {
@@ -146,7 +177,7 @@ float EnvelopeParams::dt(char val)
  */
 void EnvelopeParams::ADSRinit(char A_dt, char D_dt, char S_val, char R_dt)
 {
-    //setpresettype("Penvamplitude");
+    setpresettype("Penvamplitude");
     Envmode   = 1;
     PA_dt     = A_dt;
     PD_dt     = D_dt;
@@ -160,7 +191,7 @@ void EnvelopeParams::ADSRinit(char A_dt, char D_dt, char S_val, char R_dt)
 
 void EnvelopeParams::ADSRinit_dB(char A_dt, char D_dt, char S_val, char R_dt)
 {
-    //setpresettype("Penvamplitude");
+    setpresettype("Penvamplitude");
     Envmode   = 2;
     PA_dt     = A_dt;
     PD_dt     = D_dt;
@@ -174,7 +205,7 @@ void EnvelopeParams::ADSRinit_dB(char A_dt, char D_dt, char S_val, char R_dt)
 
 void EnvelopeParams::ASRinit(char A_val, char A_dt, char R_val, char R_dt)
 {
-    //setpresettype("Penvfrequency");
+    setpresettype("Penvfrequency");
     Envmode   = 3;
     PA_val    = A_val;
     PA_dt     = A_dt;
@@ -193,7 +224,7 @@ void EnvelopeParams::ADSRinit_filter(char A_val,
                                      char R_dt,
                                      char R_val)
 {
-    //setpresettype("Penvfilter");
+    setpresettype("Penvfilter");
     Envmode   = 4;
     PA_val    = A_val;
     PA_dt     = A_dt;
@@ -208,7 +239,7 @@ void EnvelopeParams::ADSRinit_filter(char A_val,
 
 void EnvelopeParams::ASRinit_bw(char A_val, char A_dt, char R_val, char R_dt)
 {
-    //setpresettype("Penvbandwidth");
+    setpresettype("Penvbandwidth");
     Envmode   = 5;
     PA_val    = A_val;
     PA_dt     = A_dt;
@@ -282,58 +313,58 @@ void EnvelopeParams::converttofree()
 
 
 
-void EnvelopeParams::add2XML(XMLwrapper *xml)
+void EnvelopeParams::add2XML(XMLwrapper& xml)
 {
-    xml->addparbool("free_mode", Pfreemode);
-    xml->addpar("env_points", Penvpoints);
-    xml->addpar("env_sustain", Penvsustain);
-    xml->addpar("env_stretch", Penvstretch);
-    xml->addparbool("forced_release", Pforcedrelease);
-    xml->addparbool("linear_envelope", Plinearenvelope);
-    xml->addpar("A_dt", PA_dt);
-    xml->addpar("D_dt", PD_dt);
-    xml->addpar("R_dt", PR_dt);
-    xml->addpar("A_val", PA_val);
-    xml->addpar("D_val", PD_val);
-    xml->addpar("S_val", PS_val);
-    xml->addpar("R_val", PR_val);
+    xml.addparbool("free_mode", Pfreemode);
+    xml.addpar("env_points", Penvpoints);
+    xml.addpar("env_sustain", Penvsustain);
+    xml.addpar("env_stretch", Penvstretch);
+    xml.addparbool("forced_release", Pforcedrelease);
+    xml.addparbool("linear_envelope", Plinearenvelope);
+    xml.addpar("A_dt", PA_dt);
+    xml.addpar("D_dt", PD_dt);
+    xml.addpar("R_dt", PR_dt);
+    xml.addpar("A_val", PA_val);
+    xml.addpar("D_val", PD_val);
+    xml.addpar("S_val", PS_val);
+    xml.addpar("R_val", PR_val);
 
-    if((Pfreemode != 0) || (!xml->minimal))
+    if((Pfreemode != 0) || (!xml.minimal))
         for(int i = 0; i < Penvpoints; ++i) {
-            xml->beginbranch("POINT", i);
+            xml.beginbranch("POINT", i);
             if(i != 0)
-                xml->addpar("dt", Penvdt[i]);
-            xml->addpar("val", Penvval[i]);
-            xml->endbranch();
+                xml.addpar("dt", Penvdt[i]);
+            xml.addpar("val", Penvval[i]);
+            xml.endbranch();
         }
 }
 
 
 
-void EnvelopeParams::getfromXML(XMLwrapper *xml)
+void EnvelopeParams::getfromXML(XMLwrapper& xml)
 {
-    Pfreemode       = xml->getparbool("free_mode", Pfreemode);
-    Penvpoints      = xml->getpar127("env_points", Penvpoints);
-    Penvsustain     = xml->getpar127("env_sustain", Penvsustain);
-    Penvstretch     = xml->getpar127("env_stretch", Penvstretch);
-    Pforcedrelease  = xml->getparbool("forced_release", Pforcedrelease);
-    Plinearenvelope = xml->getparbool("linear_envelope", Plinearenvelope);
+    Pfreemode       = xml.getparbool("free_mode", Pfreemode);
+    Penvpoints      = xml.getpar127("env_points", Penvpoints);
+    Penvsustain     = xml.getpar127("env_sustain", Penvsustain);
+    Penvstretch     = xml.getpar127("env_stretch", Penvstretch);
+    Pforcedrelease  = xml.getparbool("forced_release", Pforcedrelease);
+    Plinearenvelope = xml.getparbool("linear_envelope", Plinearenvelope);
 
-    PA_dt  = xml->getpar127("A_dt", PA_dt);
-    PD_dt  = xml->getpar127("D_dt", PD_dt);
-    PR_dt  = xml->getpar127("R_dt", PR_dt);
-    PA_val = xml->getpar127("A_val", PA_val);
-    PD_val = xml->getpar127("D_val", PD_val);
-    PS_val = xml->getpar127("S_val", PS_val);
-    PR_val = xml->getpar127("R_val", PR_val);
+    PA_dt  = xml.getpar127("A_dt", PA_dt);
+    PD_dt  = xml.getpar127("D_dt", PD_dt);
+    PR_dt  = xml.getpar127("R_dt", PR_dt);
+    PA_val = xml.getpar127("A_val", PA_val);
+    PD_val = xml.getpar127("D_val", PD_val);
+    PS_val = xml.getpar127("S_val", PS_val);
+    PR_val = xml.getpar127("R_val", PR_val);
 
     for(int i = 0; i < Penvpoints; ++i) {
-        if(xml->enterbranch("POINT", i) == 0)
+        if(xml.enterbranch("POINT", i) == 0)
             continue;
         if(i != 0)
-            Penvdt[i] = xml->getpar127("dt", Penvdt[i]);
-        Penvval[i] = xml->getpar127("val", Penvval[i]);
-        xml->exitbranch();
+            Penvdt[i] = xml.getpar127("dt", Penvdt[i]);
+        Penvval[i] = xml.getpar127("val", Penvval[i]);
+        xml.exitbranch();
     }
 
     if(!Pfreemode)

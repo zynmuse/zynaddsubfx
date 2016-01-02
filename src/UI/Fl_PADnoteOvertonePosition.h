@@ -6,7 +6,7 @@
 #include "Fl_Osc_Widget.H"
 #include "Fl_Osc_Interface.h"
 
-class PADnoteOvertonePosition: public Fl_Box, Fl_Osc_Widget
+class PADnoteOvertonePosition: public Fl_Box, public Fl_Osc_Widget
 {
     public:
         PADnoteOvertonePosition(int x,int y, int w, int h, const char *label=0)
@@ -21,6 +21,8 @@ class PADnoteOvertonePosition: public Fl_Box, Fl_Osc_Widget
 
         ~PADnoteOvertonePosition(void)
         {
+            osc->removeLink("/oscilsize",
+                    (Fl_Osc_Widget*) this);
             osc->removeLink(base_path + "oscilgen/spectrum",
                     (Fl_Osc_Widget*) this);
             osc->removeLink(base_path + "nhr",
@@ -51,13 +53,11 @@ class PADnoteOvertonePosition: public Fl_Box, Fl_Osc_Widget
             osc->createLink(base_path + "Pmode",
                     (Fl_Osc_Widget*) this);
 
-            fprintf(stderr, "registered at my location '%s'\n", (base_path + "nhr").c_str());
             update();
         }
 
         void update(void)
         {
-            printf("Update...\n");
             osc->requestValue(base_path + "nhr");
             osc->requestValue(base_path + "oscilgen/spectrum");
             osc->requestValue(base_path + "Pmode");
@@ -66,6 +66,15 @@ class PADnoteOvertonePosition: public Fl_Box, Fl_Osc_Widget
         virtual void OSC_value(unsigned N, void *data, const char *name)
             override
         {
+            if(N/4 != nsamples) {
+                nsamples = N/4;
+                delete [] spc;
+                delete [] nhr;
+                spc = new float[nsamples];
+                nhr = new float[nsamples];
+                memset(spc, 0, nsamples*sizeof(float));
+                memset(nhr, 0, nsamples*sizeof(float));
+            }
             assert(N==(4*nsamples));
             float *d = (float*)data;
             if(!strcmp(name, "spectrum"))
@@ -81,13 +90,15 @@ class PADnoteOvertonePosition: public Fl_Box, Fl_Osc_Widget
                 mode = x;
                 regenerateOvertones();
             } else if(!strcmp(name, "oscilsize")) {
-                nsamples = x/2;
-                delete [] spc;
-                delete [] nhr;
-                spc = new float[nsamples];
-                nhr = new float[nsamples];
-                memset(spc, 0, nsamples*sizeof(float));
-                memset(nhr, 0, nsamples*sizeof(float));
+                if(x/2 != (int)nsamples) {
+                    nsamples = x/2;
+                    delete [] spc;
+                    delete [] nhr;
+                    spc = new float[nsamples];
+                    nhr = new float[nsamples];
+                    memset(spc, 0, nsamples*sizeof(float));
+                    memset(nhr, 0, nsamples*sizeof(float));
+                }
             }
         }
 

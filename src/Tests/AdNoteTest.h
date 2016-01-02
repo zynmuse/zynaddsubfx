@@ -42,14 +42,13 @@ using namespace std;
 class AdNoteTest:public CxxTest::TestSuite
 {
     public:
-
         ADnote       *note;
-        Master       *master;
+        AbsTime      *time;
         FFTwrapper   *fft;
+        ADnoteParameters *defaultPreset;
         Controller   *controller;
-        Allocator     memory;
+        Alloc         memory;
         unsigned char testnote;
-
 
         float *outR, *outL;
 
@@ -57,6 +56,8 @@ class AdNoteTest:public CxxTest::TestSuite
             //First the sensible settings and variables that have to be set:
             synth = new SYNTH_T;
             synth->buffersize = 256;
+            //synth->alias();
+            time  = new AbsTime(*synth);
 
             outL = new float[synth->buffersize];
             for(int i = 0; i < synth->buffersize; ++i)
@@ -65,32 +66,25 @@ class AdNoteTest:public CxxTest::TestSuite
             for(int i = 0; i < synth->buffersize; ++i)
                 *(outR + i) = 0;
 
-            //next the bad global variables that for some reason have not been properly placed in some
-            //initialization routine, but rather exist as cryptic oneliners in main.cpp:
-            denormalkillbuf = new float[synth->buffersize];
-            for(int i = 0; i < synth->buffersize; ++i)
-                denormalkillbuf[i] = 0;
-
-            //phew, glad to get thouse out of my way. took me a lot of sweat and gdb to get this far...
 
             fft = new FFTwrapper(synth->oscilsize);
             //prepare the default settings
-            ADnoteParameters *defaultPreset = new ADnoteParameters(fft);
+            defaultPreset = new ADnoteParameters(*synth, fft, time);
 
             //Assert defaults
             TS_ASSERT(!defaultPreset->VoicePar[1].Enabled);
 
-            XMLwrapper *wrap = new XMLwrapper();
+            XMLwrapper wrap;
             cout << string(SOURCE_DIR) + string("/guitar-adnote.xmz")
                  << endl;
-            wrap->loadXMLfile(string(SOURCE_DIR)
+            wrap.loadXMLfile(string(SOURCE_DIR)
                               + string("/guitar-adnote.xmz"));
-            TS_ASSERT(wrap->enterbranch("MASTER"));
-            TS_ASSERT(wrap->enterbranch("PART", 0));
-            TS_ASSERT(wrap->enterbranch("INSTRUMENT"));
-            TS_ASSERT(wrap->enterbranch("INSTRUMENT_KIT"));
-            TS_ASSERT(wrap->enterbranch("INSTRUMENT_KIT_ITEM", 0));
-            TS_ASSERT(wrap->enterbranch("ADD_SYNTH_PARAMETERS"));
+            TS_ASSERT(wrap.enterbranch("MASTER"));
+            TS_ASSERT(wrap.enterbranch("PART", 0));
+            TS_ASSERT(wrap.enterbranch("INSTRUMENT"));
+            TS_ASSERT(wrap.enterbranch("INSTRUMENT_KIT"));
+            TS_ASSERT(wrap.enterbranch("INSTRUMENT_KIT_ITEM", 0));
+            TS_ASSERT(wrap.enterbranch("ADD_SYNTH_PARAMETERS"));
             defaultPreset->getfromXML(wrap);
             //defaultPreset->defaults();
 
@@ -99,31 +93,24 @@ class AdNoteTest:public CxxTest::TestSuite
 
 
 
-            controller = new Controller();
+            controller = new Controller(*synth, time);
 
             //lets go with.... 50! as a nice note
             testnote = 50;
             float freq = 440.0f * powf(2.0f, (testnote - 69.0f) / 12.0f);
-            SynthParams pars{memory, *controller, freq, 120, 0, testnote, false};
+            SynthParams pars{memory, *controller, *synth, *time, freq, 120, 0, testnote, false};
 
             note = new ADnote(defaultPreset, pars);
 
-            delete defaultPreset;
-            delete wrap;
-        }
-
-        void willNoteBeRunButIsHereForLinkingReasonsHowsThisForCamelCaseEh()
-        {
-            master = new Master();
         }
 
         void tearDown() {
             delete note;
             delete controller;
+            delete defaultPreset;
             delete fft;
             delete [] outL;
             delete [] outR;
-            delete [] denormalkillbuf;
             FFT_cleanup();
             delete synth;
         }

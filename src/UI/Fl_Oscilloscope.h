@@ -17,10 +17,12 @@ class Fl_Oscilloscope : public Fl_Box, public Fl_Osc_Widget
 {
     public:
         Fl_Oscilloscope(int x,int y, int w, int h, const char *label=0)
-            :Fl_Box(x,y,w,h,label), Fl_Osc_Widget(this), smps(0), oscilsize(0)
+            :Fl_Box(x,y,w,h,label), Fl_Osc_Widget(this), smps(0), oscilsize(0),
+            Overlay(NULL)
         {
             phase=64;
             box(FL_FLAT_BOX);
+            bkgnd = fl_color_average( FL_BLACK, FL_BACKGROUND_COLOR, 0.5 );
         }
 
         ~Fl_Oscilloscope(void)
@@ -44,6 +46,8 @@ class Fl_Oscilloscope : public Fl_Box, public Fl_Osc_Widget
 
         virtual void OSC_value(int smp)
         {
+            if(smp == oscilsize)
+                return;
             oscilsize = smp;
             delete []smps;
             smps = new float[oscilsize];
@@ -52,6 +56,9 @@ class Fl_Oscilloscope : public Fl_Box, public Fl_Osc_Widget
 
         virtual void OSC_value(unsigned N, void *data) override
         {
+            if(oscilsize == 0)
+                OSC_value((int)N/4);
+
             assert(N==(unsigned)(oscilsize*4));
 
             memcpy(smps, data, N);
@@ -75,8 +82,8 @@ class Fl_Oscilloscope : public Fl_Box, public Fl_Osc_Widget
         {
             int ox=x(),oy=y(),lx=w(),ly=h()-1;
 
-            if (damage()!=1){
-                fl_color( fl_color_average( FL_BLACK, FL_BACKGROUND_COLOR, 0.5 ));
+            if (damage()!=1) {
+                fl_color(bkgnd);
                 fl_rectf(ox,oy,lx,ly);
             }
 
@@ -105,18 +112,26 @@ class Fl_Oscilloscope : public Fl_Box, public Fl_Osc_Widget
 
             fl_color( fl_color_add_alpha( fl_color(), 127 ) );
 
-            int lw=2;
-            fl_line_style(FL_SOLID,lw);
-            fl_begin_line();
-            double ph=((phase-64.0)/128.0*oscilsize+oscilsize);
-            for (int i=1;i<lx;i++){
-                int k2=(oscilsize*i/lx)+ph;
-                double y2=smps[k2%oscilsize];
-                fl_vertex(i+ox,y2*ly/2.0+oy+ly/2);
+            if(smps) {
+                int lw=2;
+                fl_line_style(FL_SOLID,lw);
+                fl_begin_line();
+                double ph=((phase-64.0)/128.0*oscilsize+oscilsize);
+                for (int i=1;i<lx;i++){
+                    int k2=(oscilsize*i/lx)+ph;
+                    fl_vertex(i+ox,(smps[k2%oscilsize]+1)*(ly-1)/2+oy+0.5);
+                }
+                fl_end_line();
             }
-            fl_end_line();
+
+            // Erase stray pixels on margin
+            fl_color(bkgnd);
+            fl_line_style(FL_SOLID,1);
+            fl_rect(ox-1,oy-1,lx+2,ly+2);
 
             fl_line_style(FL_SOLID,0);
+            if (Overlay)
+                Overlay->redraw();
         }
 
         //allows UI to manipuate phase of displayed waveform
@@ -136,4 +151,7 @@ class Fl_Oscilloscope : public Fl_Box, public Fl_Osc_Widget
 
         float *smps;
         int oscilsize;
+        Fl_Color bkgnd;
+    public:
+        Fl_Box *Overlay;
 };

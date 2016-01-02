@@ -27,21 +27,23 @@
 #include "../Misc/XMLwrapper.h"
 #include "PresetsArray.h"
 
-class FilterParams
+class FilterParams:public PresetsArray
 {
     public:
-        FilterParams();
+        FilterParams(const AbsTime *time_ = nullptr);
         FilterParams(unsigned char Ptype_,
                      unsigned char Pfreq,
-                     unsigned char Pq_);
+                     unsigned char Pq_,
+                     const AbsTime *time_ = nullptr);
         ~FilterParams();
 
-        void add2XML(XMLwrapper *xml);
-        void add2XMLsection(XMLwrapper *xml, int n);
+        void add2XML(XMLwrapper& xml);
+        void add2XMLsection(XMLwrapper& xml, int n);
         void defaults();
-        void getfromXML(XMLwrapper *xml);
-        void getfromXMLsection(XMLwrapper *xml, int n);
+        void getfromXML(XMLwrapper& xml);
+        void getfromXMLsection(XMLwrapper& xml, int n);
         void paste(FilterParams &);
+        void pasteArray(FilterParams &, int section);
 
 
         void getfromFilterParams(FilterParams *pars);
@@ -66,9 +68,17 @@ class FilterParams
         unsigned char Pcenterfreq, Poctavesfreq; //the center frequency of the res. func., and the number of octaves
 
         struct Pvowels_t {
+//            Pvowels_t() : last_update_timestamp(0) {}
             struct formants_t {
+//                formants_t() : last_update_timestamp(0) {}
                 unsigned char freq, amp, q; //frequency,amplitude,Q
+
+//                const AbsTime *time;
+//                int64_t last_update_timestamp;
             } formants[FF_MAX_FORMANTS];
+
+//            const AbsTime *time;
+//            int64_t last_update_timestamp;
         } Pvowels[FF_MAX_VOWELS];
 
 
@@ -84,17 +94,20 @@ class FilterParams
         float getfreqpos(float freq);
         float getfreqx(float x);
 
-        void formantfilterH(int nvowel, int nfreqs, float *freqs); //used by UI
-
         float getformantfreq(unsigned char freq);
         float getformantamp(unsigned char amp);
         float getformantq(unsigned char q);
 
+        void defaults(int n);
+
+
         bool changed;
+
+        const AbsTime *time;
+        int64_t last_update_timestamp;
 
         static const rtosc::Ports ports;
     private:
-        void defaults(int n);
 
         //stored default parameters
         unsigned char Dtype;

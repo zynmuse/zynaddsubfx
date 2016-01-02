@@ -22,6 +22,7 @@
 
 #include "FilterParams.h"
 #include "../Misc/Util.h"
+#include "../Misc/Time.h"
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -36,11 +37,15 @@ using namespace rtosc;
 constexpr int sizeof_pvowels = sizeof(FilterParams::Pvowels);
 
 #define rObject FilterParams::Pvowels_t::formants_t
+
+//#undef rChangeCb
+//#define rChangeCb if (obj->time) { obj->last_update_timestamp = obj->time->time(); }
 static const rtosc::Ports subsubports = {
     rParamZyn(freq, "Formant frequency"),
     rParamZyn(amp,  "Strength of formant"),
     rParamZyn(q,    "Quality Factor"),
 };
+//#undef rChangeCb
 #undef rObject
 
 static const rtosc::Ports subports = {
@@ -54,15 +59,18 @@ static const rtosc::Ports subports = {
             FilterParams::Pvowels_t *obj = (FilterParams::Pvowels_t *) d.obj;
             d.obj = (void*) &obj->formants[idx];
             subsubports.dispatch(msg, d);
+//            if (obj->time) { obj->last_pdate_timestamp = obj->time->time(); }
         }},
 };
 
 #define rObject FilterParams
 #undef  rChangeCb
-#define rChangeCb obj->changed = true;
+#define rChangeCb obj->changed = true; if ( obj->time) {      \
+    obj->last_update_timestamp = obj->time->time(); }
 const rtosc::Ports FilterParams::ports = {
     rSelf(FilterParams),
-    rPaste(),
+    rPaste,
+    rArrayPaste,
     rParamZyn(Pcategory,   "Class of filter"),
     rParamZyn(Ptype,       "Filter Type"),
     rParamZyn(Pfreq,        "Center Freq"),
@@ -104,13 +112,14 @@ const rtosc::Ports FilterParams::ports = {
             if(rtosc_narguments(msg))
                 rChangeCb;
         }},
-    {"centerfreq:", NULL, NULL,
-        [](const char *, RtData &d) {
+    {"centerfreq:", rDoc("Get the center frequency of the formant's graph"),
+        NULL, [](const char *, RtData &d) {
             FilterParams *obj = (FilterParams *) d.obj;
             d.reply(d.loc, "f", obj->getcenterfreq());
         }},
-    {"octavesfreq:", NULL, NULL,
-        [](const char *, RtData &d) {
+    {"octavesfreq:",
+        rDoc("Get the number of octave that the formant functions applies to"),
+        NULL, [](const char *, RtData &d) {
             FilterParams *obj = (FilterParams *) d.obj;
             d.reply(d.loc, "f", obj->getoctavesfreq());
         }},
@@ -120,18 +129,22 @@ const rtosc::Ports FilterParams::ports = {
     //{"Pvowels#" FF_MAX_VOWELS "/formants#" FF_MAX_FORMANTS "/q",
     //    "", NULL, [](){}},
 };
+#undef rChangeCb
+#define rChangeCb
 
 
 
-FilterParams::FilterParams()
-    :FilterParams(0,64,64)
+FilterParams::FilterParams(const AbsTime *time_)
+    :FilterParams(0,64,64, time_)
 {
 }
 FilterParams::FilterParams(unsigned char Ptype_,
                            unsigned char Pfreq_,
-                           unsigned char Pq_)
+                           unsigned char Pq_,
+                           const AbsTime *time_):
+        time(time_), last_update_timestamp(0)
 {
-    //setpresettype("Pfilter");
+    setpresettype("Pfilter");
     Dtype = Ptype_;
     Dfreq = Pfreq_;
     Dq    = Pq_;
@@ -175,10 +188,14 @@ void FilterParams::defaults()
 void FilterParams::defaults(int n)
 {
     int j = n;
+
+//    Pvowels[j].time = time;
+
     for(int i = 0; i < FF_MAX_FORMANTS; ++i) {
         Pvowels[j].formants[i].freq = (int)(RND * 127.0f); //some random freqs
         Pvowels[j].formants[i].q    = 64;
         Pvowels[j].formants[i].amp  = 127;
+//        Pvowels[j].formants[i].time = time;
     }
 }
 
@@ -281,85 +298,6 @@ float FilterParams::getfreqpos(float freq)
     return (logf(freq) - logf(getfreqx(0.0f))) / logf(2.0f) / getoctavesfreq();
 }
 
-
-/*
- * Get the freq. response of the formant filter
- */
-void FilterParams::formantfilterH(int nvowel, int nfreqs, float *freqs)
-{
-    float c[3], d[3];
-
-    for(int i = 0; i < nfreqs; ++i)
-        freqs[i] = 0.0f;
-
-    //for each formant...
-    for(int nformant = 0; nformant < Pnumformants; ++nformant) {
-        //compute formant parameters(frequency,amplitude,etc.)
-        const float filter_freq = getformantfreq(Pvowels[nvowel].formants[nformant].freq);
-        float filter_q    = getformantq(Pvowels[nvowel].formants[nformant].q) * getq();
-        if(Pstages > 0)
-            filter_q = (filter_q > 1.0f ? powf(filter_q, 1.0f / (Pstages + 1)) : filter_q);
-
-        const float filter_amp = getformantamp(Pvowels[nvowel].formants[nformant].amp);
-
-
-        if(filter_freq <= (synth->samplerate / 2 - 100.0f)) {
-            const float omega = 2 * PI * filter_freq / synth->samplerate_f;
-            const float sn    = sinf(omega);
-            const float cs    = cosf(omega);
-            const float alpha = sn / (2 * filter_q);
-            const float tmp   = 1 + alpha;
-            c[0] = alpha / tmp *sqrt(filter_q + 1);
-            c[1] = 0;
-            c[2] = -alpha / tmp *sqrt(filter_q + 1);
-            d[1] = -2 * cs / tmp * (-1);
-            d[2] = (1 - alpha) / tmp * (-1);
-        }
-        else
-            continue;
-
-
-        for(int i = 0; i < nfreqs; ++i) {
-            const float freq = getfreqx(i / (float) nfreqs);
-
-            //Discard frequencies above nyquist rate
-            if(freq > synth->samplerate / 2) {
-                for(int tmp = i; tmp < nfreqs; ++tmp)
-                    freqs[tmp] = 0.0f;
-                break;
-            }
-
-            //Convert to normalized frequency
-            const float fr = freq / synth->samplerate * PI * 2.0f;
-
-            //Evaluate Complex domain ratio
-            float x  = c[0], y = 0.0f;
-            for(int n = 1; n < 3; ++n) {
-                x += cosf(n * fr) * c[n];
-                y -= sinf(n * fr) * c[n];
-            }
-            float h = x * x + y * y;
-            x = 1.0f;
-            y = 0.0f;
-            for(int n = 1; n < 3; ++n) {
-                x -= cosf(n * fr) * d[n];
-                y += sinf(n * fr) * d[n];
-            }
-            h = h / (x * x + y * y);
-
-            freqs[i] += powf(h, (Pstages + 1.0f) / 2.0f) * filter_amp;
-        }
-    }
-
-    //Convert to logarithmic data ignoring points that are too small
-    for(int i = 0; i < nfreqs; ++i) {
-        if(freqs[i] > 0.000000001f)
-            freqs[i] = rap2dB(freqs[i]) + getgain();
-        else
-            freqs[i] = -90.0f;
-    }
-}
-
 /*
  * Transforms a parameter to the real value
  */
@@ -384,121 +322,171 @@ float FilterParams::getformantq(unsigned char q)
 
 
 
-void FilterParams::add2XMLsection(XMLwrapper *xml, int n)
+void FilterParams::add2XMLsection(XMLwrapper& xml, int n)
 {
     int nvowel = n;
     for(int nformant = 0; nformant < FF_MAX_FORMANTS; ++nformant) {
-        xml->beginbranch("FORMANT", nformant);
-        xml->addpar("freq", Pvowels[nvowel].formants[nformant].freq);
-        xml->addpar("amp", Pvowels[nvowel].formants[nformant].amp);
-        xml->addpar("q", Pvowels[nvowel].formants[nformant].q);
-        xml->endbranch();
+        xml.beginbranch("FORMANT", nformant);
+        xml.addpar("freq", Pvowels[nvowel].formants[nformant].freq);
+        xml.addpar("amp", Pvowels[nvowel].formants[nformant].amp);
+        xml.addpar("q", Pvowels[nvowel].formants[nformant].q);
+        xml.endbranch();
     }
 }
 
-void FilterParams::add2XML(XMLwrapper *xml)
+void FilterParams::add2XML(XMLwrapper& xml)
 {
     //filter parameters
-    xml->addpar("category", Pcategory);
-    xml->addpar("type", Ptype);
-    xml->addpar("freq", Pfreq);
-    xml->addpar("q", Pq);
-    xml->addpar("stages", Pstages);
-    xml->addpar("freq_track", Pfreqtrack);
-    xml->addpar("gain", Pgain);
+    xml.addpar("category", Pcategory);
+    xml.addpar("type", Ptype);
+    xml.addpar("freq", Pfreq);
+    xml.addpar("q", Pq);
+    xml.addpar("stages", Pstages);
+    xml.addpar("freq_track", Pfreqtrack);
+    xml.addpar("gain", Pgain);
 
     //formant filter parameters
-    if((Pcategory == 1) || (!xml->minimal)) {
-        xml->beginbranch("FORMANT_FILTER");
-        xml->addpar("num_formants", Pnumformants);
-        xml->addpar("formant_slowness", Pformantslowness);
-        xml->addpar("vowel_clearness", Pvowelclearness);
-        xml->addpar("center_freq", Pcenterfreq);
-        xml->addpar("octaves_freq", Poctavesfreq);
+    if((Pcategory == 1) || (!xml.minimal)) {
+        xml.beginbranch("FORMANT_FILTER");
+        xml.addpar("num_formants", Pnumformants);
+        xml.addpar("formant_slowness", Pformantslowness);
+        xml.addpar("vowel_clearness", Pvowelclearness);
+        xml.addpar("center_freq", Pcenterfreq);
+        xml.addpar("octaves_freq", Poctavesfreq);
         for(int nvowel = 0; nvowel < FF_MAX_VOWELS; ++nvowel) {
-            xml->beginbranch("VOWEL", nvowel);
+            xml.beginbranch("VOWEL", nvowel);
             add2XMLsection(xml, nvowel);
-            xml->endbranch();
+            xml.endbranch();
         }
-        xml->addpar("sequence_size", Psequencesize);
-        xml->addpar("sequence_stretch", Psequencestretch);
-        xml->addparbool("sequence_reversed", Psequencereversed);
+        xml.addpar("sequence_size", Psequencesize);
+        xml.addpar("sequence_stretch", Psequencestretch);
+        xml.addparbool("sequence_reversed", Psequencereversed);
         for(int nseq = 0; nseq < FF_MAX_SEQUENCE; ++nseq) {
-            xml->beginbranch("SEQUENCE_POS", nseq);
-            xml->addpar("vowel_id", Psequence[nseq].nvowel);
-            xml->endbranch();
+            xml.beginbranch("SEQUENCE_POS", nseq);
+            xml.addpar("vowel_id", Psequence[nseq].nvowel);
+            xml.endbranch();
         }
-        xml->endbranch();
+        xml.endbranch();
     }
 }
 
 
-void FilterParams::getfromXMLsection(XMLwrapper *xml, int n)
+void FilterParams::getfromXMLsection(XMLwrapper& xml, int n)
 {
     int nvowel = n;
     for(int nformant = 0; nformant < FF_MAX_FORMANTS; ++nformant) {
-        if(xml->enterbranch("FORMANT", nformant) == 0)
+        if(xml.enterbranch("FORMANT", nformant) == 0)
             continue;
-        Pvowels[nvowel].formants[nformant].freq = xml->getpar127(
+        Pvowels[nvowel].formants[nformant].freq = xml.getpar127(
             "freq",
             Pvowels[nvowel
             ].formants[nformant].freq);
-        Pvowels[nvowel].formants[nformant].amp = xml->getpar127(
+        Pvowels[nvowel].formants[nformant].amp = xml.getpar127(
             "amp",
             Pvowels[nvowel
             ].formants[nformant].amp);
         Pvowels[nvowel].formants[nformant].q =
-            xml->getpar127("q", Pvowels[nvowel].formants[nformant].q);
-        xml->exitbranch();
+            xml.getpar127("q", Pvowels[nvowel].formants[nformant].q);
+        xml.exitbranch();
     }
 }
 
-void FilterParams::getfromXML(XMLwrapper *xml)
+void FilterParams::getfromXML(XMLwrapper& xml)
 {
     //filter parameters
-    Pcategory = xml->getpar127("category", Pcategory);
-    Ptype     = xml->getpar127("type", Ptype);
-    Pfreq     = xml->getpar127("freq", Pfreq);
-    Pq         = xml->getpar127("q", Pq);
-    Pstages    = xml->getpar127("stages", Pstages);
-    Pfreqtrack = xml->getpar127("freq_track", Pfreqtrack);
-    Pgain      = xml->getpar127("gain", Pgain);
+    Pcategory = xml.getpar127("category", Pcategory);
+    Ptype     = xml.getpar127("type", Ptype);
+    Pfreq     = xml.getpar127("freq", Pfreq);
+    Pq         = xml.getpar127("q", Pq);
+    Pstages    = xml.getpar127("stages", Pstages);
+    Pfreqtrack = xml.getpar127("freq_track", Pfreqtrack);
+    Pgain      = xml.getpar127("gain", Pgain);
 
     //formant filter parameters
-    if(xml->enterbranch("FORMANT_FILTER")) {
-        Pnumformants     = xml->getpar127("num_formants", Pnumformants);
-        Pformantslowness = xml->getpar127("formant_slowness", Pformantslowness);
-        Pvowelclearness  = xml->getpar127("vowel_clearness", Pvowelclearness);
-        Pcenterfreq      = xml->getpar127("center_freq", Pcenterfreq);
-        Poctavesfreq     = xml->getpar127("octaves_freq", Poctavesfreq);
+    if(xml.enterbranch("FORMANT_FILTER")) {
+        Pnumformants     = xml.getpar127("num_formants", Pnumformants);
+        Pformantslowness = xml.getpar127("formant_slowness", Pformantslowness);
+        Pvowelclearness  = xml.getpar127("vowel_clearness", Pvowelclearness);
+        Pcenterfreq      = xml.getpar127("center_freq", Pcenterfreq);
+        Poctavesfreq     = xml.getpar127("octaves_freq", Poctavesfreq);
 
         for(int nvowel = 0; nvowel < FF_MAX_VOWELS; ++nvowel) {
-            if(xml->enterbranch("VOWEL", nvowel) == 0)
+            if(xml.enterbranch("VOWEL", nvowel) == 0)
                 continue;
             getfromXMLsection(xml, nvowel);
-            xml->exitbranch();
+            xml.exitbranch();
         }
-        Psequencesize     = xml->getpar127("sequence_size", Psequencesize);
-        Psequencestretch  = xml->getpar127("sequence_stretch", Psequencestretch);
-        Psequencereversed = xml->getparbool("sequence_reversed",
+        Psequencesize     = xml.getpar127("sequence_size", Psequencesize);
+        Psequencestretch  = xml.getpar127("sequence_stretch", Psequencestretch);
+        Psequencereversed = xml.getparbool("sequence_reversed",
                                             Psequencereversed);
         for(int nseq = 0; nseq < FF_MAX_SEQUENCE; ++nseq) {
-            if(xml->enterbranch("SEQUENCE_POS", nseq) == 0)
+            if(xml.enterbranch("SEQUENCE_POS", nseq) == 0)
                 continue;
-            Psequence[nseq].nvowel = xml->getpar("vowel_id",
+            Psequence[nseq].nvowel = xml.getpar("vowel_id",
                                                  Psequence[nseq].nvowel,
                                                  0,
                                                  FF_MAX_VOWELS - 1);
-            xml->exitbranch();
+            xml.exitbranch();
         }
-        xml->exitbranch();
+        xml.exitbranch();
     }
 }
 
+#define COPY(y) this->y = x.y
 void FilterParams::paste(FilterParams &x)
 {
-    //Avoid undefined behavior
-    if(&x == this)
-        return;
-    memcpy((char*)this, (const char*)&x, sizeof(*this));
+    COPY(Pcategory);
+    COPY(Ptype);
+    COPY(Pfreq);
+    COPY(Pq);
+    COPY(Pstages);
+    COPY(Pfreqtrack);
+    COPY(Pgain);
+
+    COPY(Pnumformants);
+    COPY(Pformantslowness);
+    COPY(Pvowelclearness);
+    COPY(Pcenterfreq);
+    COPY(Poctavesfreq);
+
+    for(int i=0; i<FF_MAX_VOWELS; ++i) {
+        for(int j=0; j<FF_MAX_FORMANTS; ++j) {
+            auto &a = this->Pvowels[i].formants[j];
+            auto &b = x.Pvowels[i].formants[j];
+            a.freq = b.freq;
+            a.amp  = b.amp;
+            a.q    = b.q;
+        }
+    }
+
+
+    COPY(Psequencesize);
+    COPY(Psequencestretch);
+    COPY(Psequencereversed);
+    for(int i=0; i<FF_MAX_SEQUENCE; ++i)
+        this->Psequence[i] = x.Psequence[i];
+
+    COPY(changed);
+
+    if ( time ) {
+        last_update_timestamp = time->time();
+    }
+}
+#undef COPY
+
+void FilterParams::pasteArray(FilterParams &x, int nvowel)
+{
+    printf("FilterParameters::pasting-an-array<%d>\n", nvowel);
+    for(int nformant = 0; nformant < FF_MAX_FORMANTS; ++nformant) {
+        auto &self   = Pvowels[nvowel].formants[nformant];
+        auto &update = x.Pvowels[nvowel].formants[nformant];
+        self.freq = update.freq;
+        self.amp  = update.amp;
+        self.q    = update.q;
+    }
+
+    if ( time ) {
+        last_update_timestamp = time->time();
+    }
 }

@@ -29,6 +29,9 @@ decl {\#include "Fl_Osc_Check.H"} {public local
 decl {\#include "Fl_EQGraph.H"} {public local
 } 
 
+decl {\#include "Fl_Osc_Pane.H"} {public local
+}
+
 decl {\#include "EnvelopeUI.h"} {public local
 } 
 
@@ -39,7 +42,13 @@ decl {\#include "../Misc/Util.h"} {public local
 } 
 
 decl {\#include "../Effects/EffectMgr.h"} {public local
-} 
+}
+
+decl {\#include "../Effects/Phaser.h" /* for macros only, TODO */} {public local
+}
+
+decl {\#include "../Effects/Alienwah.h" /* for macros only, TODO */ } {public local
+}
 
 decl {\#include "PresetsUI.h"} {public local
 } 
@@ -144,7 +153,7 @@ if (filterwindow!=NULL){
         label Type
         callback {if(o->value()==2) revp12->activate();
 	else revp12->deactivate();}
-        xywh {110 15 85 15} down_box BORDER_BOX color 14 selection_color 7 labelfont 1 labelsize 10 align 5 textfont 1 textsize 10
+        xywh {110 15 85 15} box UP_BOX down_box BORDER_BOX color 14 selection_color 7 labelfont 1 labelsize 10 align 5 textfont 1 textsize 10
         code0 {o->init("parameter10");}
         class Fl_Osc_Choice
       } {
@@ -943,7 +952,7 @@ stagescounter->oscMove("parameter"+to_s(npb+4));}
         Fl_Counter stagescounter {
           label {St.}
           callback {eqgraph->update();}
-          tooltip {Additional filter stages} xywh {340 60 30 15} type Simple labelfont 1 labelsize 10 minimum 1 maximum 127 step 1 textfont 1 textsize 11
+          tooltip {Additional filter stages} xywh {340 60 30 15} type Simple labelfont 1 labelsize 10 minimum 0 maximum 127 step 1 textfont 1 textsize 11
           code0 {o->init("parameter14");}
           class Fl_Osc_Counter
         }
@@ -1130,7 +1139,7 @@ eqgraph->update();}
       Fl_Group {} {
         label {DynFilter effect  - Filter}
         xywh {5 5 275 75} box FLAT_BOX color 50 align 144
-        code0 {o->init("",osc, loc(), "Filter/");}
+        code0 {o->init("",osc, loc(), "filterpars/");}
         code1 {o->use_for_dynamic_filter();}
         class FilterUI
       } {}

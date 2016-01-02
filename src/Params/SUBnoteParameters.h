@@ -23,18 +23,19 @@
 #ifndef SUB_NOTE_PARAMETERS_H
 #define SUB_NOTE_PARAMETERS_H
 
+#include <stdint.h>
 #include "../globals.h"
 #include "Presets.h"
 
 class SUBnoteParameters:public Presets
 {
     public:
-        SUBnoteParameters();
+        SUBnoteParameters(const AbsTime *time_ = nullptr);
         ~SUBnoteParameters();
 
-        void add2XML(XMLwrapper *xml);
+        void add2XML(XMLwrapper& xml);
         void defaults();
-        void getfromXML(XMLwrapper *xml);
+        void getfromXML(XMLwrapper& xml);
         void updateFrequencyMultipliers(void);
         void paste(SUBnoteParameters &sub);
 
@@ -54,6 +55,8 @@ class SUBnoteParameters:public Presets
         EnvelopeParams    *FreqEnvelope;
         unsigned char      PBandWidthEnvelopeEnabled;
         EnvelopeParams    *BandWidthEnvelope;
+        unsigned char     PBendAdjust;
+        unsigned char     POffsetHz;
 
         //Filter Parameters (Global)
         unsigned char   PGlobalFilterEnabled;
@@ -102,6 +105,9 @@ class SUBnoteParameters:public Presets
 
         //how the harmonics start("0"=0,"1"=random,"2"=1)
         unsigned char Pstart;
+
+        const AbsTime *time;
+        int64_t last_update_timestamp;
 
         static const rtosc::Ports &ports;
 };

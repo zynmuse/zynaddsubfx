@@ -49,7 +49,8 @@ class AdNoteTest:public CxxTest::TestSuite
         Controller   *controller;
         unsigned char testnote;
         ADnoteParameters *params;
-        Allocator memory;
+        AbsTime  *time;
+        Alloc     memory;
         float freq;
 
 
@@ -59,36 +60,32 @@ class AdNoteTest:public CxxTest::TestSuite
             //First the sensible settings and variables that have to be set:
             synth = new SYNTH_T;
             synth->buffersize = BUF;
+            synth->alias();
+            time = new AbsTime(*synth);
 
             memset(outL,0,sizeof(outL));
             memset(outR,0,sizeof(outR));
 
-            //next the bad global variables that for some reason have not been properly placed in some
-            //initialization routine, but rather exist as cryptic oneliners in main.cpp:
-            denormalkillbuf = new float[BUF];
-            memset(denormalkillbuf, 0, sizeof(float)*BUF);
-
             fft = new FFTwrapper(BUF);
             //prepare the default settings
-            params = new ADnoteParameters(fft);
+            params = new ADnoteParameters(*synth, fft, time);
 
             //sawtooth to make things a bit more interesting
             params->VoicePar[0].OscilSmp->Pcurrentbasefunc = 3;
 
-            controller = new Controller();
+            controller = new Controller(*synth, time);
 
             //lets go with.... 50! as a nice note
             testnote = 50;
             freq = 440.0f * powf(2.0f, (testnote - 69.0f) / 12.0f);
-
         }
 
         void tearDown() {
             delete note;
             delete controller;
             delete fft;
-            delete [] denormalkillbuf;
             FFT_cleanup();
+            delete time;
             delete synth;
             delete params;
         }
@@ -96,14 +93,17 @@ class AdNoteTest:public CxxTest::TestSuite
         void run_test(int a, int b, int c, int d, int e, int f, float values[4])
         {
             sprng(0);
-            params->set_unison_size_index(0,a);
+            
+            const int ADnote_unison_sizes[] =
+            {1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30, 40, 50, 0};
+            params->VoicePar[0].Unison_size = ADnote_unison_sizes[a];
             params->VoicePar[0].Unison_frequency_spread = b;
             params->VoicePar[0].Unison_stereo_spread    = c;
             params->VoicePar[0].Unison_vibratto         = d;
             params->VoicePar[0].Unison_vibratto_speed   = e;
             params->VoicePar[0].Unison_invert_phase     = f;
 
-            SynthParams pars{memory, *controller, freq, 120, 0, testnote, false};
+            SynthParams pars{memory, *controller, *synth, *time, freq, 120, 0, testnote, false};
             note = new ADnote(params, pars);
             note->noteout(outL, outR);
             TS_ASSERT_DELTA(outL[80], values[0], 1e-5);

@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 2.8)
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/")
 project(zynaddsubfx)
-set(VERSION "2.5.0")
+set(VERSION "2.5.2")
 
 
 #Include RTOSC
@@ -28,7 +28,7 @@ include(CTestConfig.cmake)
 #Currently the only directory that uses cmake
 add_subdirectory(src)
 
-install(FILES AUTHORS.txt COPYING FAQ.txt HISTORY.txt README.adoc
+install(FILES AUTHORS.txt COPYING HISTORY.txt README.adoc
 	DESTINATION share/doc/zynaddsubfx
 	)
 install(FILES zynaddsubfx-jack.desktop zynaddsubfx-alsa.desktop

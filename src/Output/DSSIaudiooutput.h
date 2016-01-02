@@ -25,7 +25,10 @@
 #include <thread>
 
 #include "../globals.h"
+#include "../Misc/Config.h"
 #include "../Misc/MiddleWare.h"
+#include "DSSIControlDescription.h"
+#include "DSSIControl.h"
 
 #include <dssi.h>
 #include <ladspa.h>
@@ -88,9 +91,6 @@ class DSSIaudiooutput
             unsigned long bank;
             unsigned long program;
             std::string   name;
-            ProgramDescriptor(unsigned long _bank,
-                              unsigned long _program,
-                              char *_name);
         };
 
     private:
@@ -111,14 +111,15 @@ class DSSIaudiooutput
         static std::string      bankDirNames[];
         static
         std::vector<ProgramDescriptor> programMap;
+        DSSIControl dssi_control[DSSIControlDescription::MAX_DSSI_CONTROLS];
 
         /**
          * Flag controlling the list of bank directories
          */
         bool banksInited;
 
-        static
-        long bankNoToMap;
+        static long bankNoToMap;
+        Config config;
 };
 
 #endif

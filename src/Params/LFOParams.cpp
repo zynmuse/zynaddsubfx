@@ -33,25 +33,30 @@ using namespace rtosc;
 
 
 #define rObject LFOParams
+#undef rChangeCb
+#define rChangeCb if (obj->time) { obj->last_update_timestamp = obj->time->time(); }
 static const rtosc::Ports _ports = {
     rSelf(LFOParams),
-    rPaste(),
-    rParamF(Pfreq, "frequency of LFO"),
+    rPaste,
+    rParamF(Pfreq, rLinear(0.0,1.0), "frequency of LFO\n"
+            "lfo frequency = (2^(10*Pfreq)-1)/12 * stretch\n"
+            "true frequency is [0,85.33] Hz"),
     rParamZyn(Pintensity, "Intensity of LFO"),
     rParamZyn(Pstartphase, rSpecial(random), "Starting Phase"),
-    rOption(PLFOtype,"Shape of LFO"),
-    rParamZyn(Prandomness, rSpecial(disable), "Amplitude Randomness"),
-    rParamZyn(Pfreqrand, rSpecial(disable), "Frequency Randomness"),
-    rParamZyn(Pdelay, rSpecial(disable), "Delay before LFO start"),
+    rOption(PLFOtype, rOptions(sine, triangle, square, ramp-up, ramp-down,
+                exponential-down1, exponential-down2), "Shape of LFO"),
+    rParamZyn(Prandomness, rSpecial(disable), "Amplitude Randomness (calculated uniformly at each cycle)"),
+    rParamZyn(Pfreqrand, rSpecial(disable), "Frequency Randomness (calculated uniformly at each cycle)"),
+    rParamZyn(Pdelay, rSpecial(disable), "Delay before LFO start\n"
+            "0..4 second delay"),
     rToggle(Pcontinous, "Enable for global operation"),
     rParamZyn(Pstretch, rCentered, "Note frequency stretch"),
 };
+#undef rChangeCb
 
 const rtosc::Ports &LFOParams::ports = _ports;
 
-int LFOParams::time;
-
-LFOParams::LFOParams()
+LFOParams::LFOParams(const AbsTime *time_) : time(time_)
 {
     Dfreq       = 64;
     Dintensity  = 0;
@@ -61,7 +66,6 @@ LFOParams::LFOParams()
     Ddelay      = 0;
     Dcontinous  = 0;
     fel  = 0;
-    time = 0;
 
     defaults();
 }
@@ -73,19 +77,20 @@ LFOParams::LFOParams(char Pfreq_,
                      char Prandomness_,
                      char Pdelay_,
                      char Pcontinous_,
-                     char fel_)
-{
-    //switch(fel_) {
-    //    case 0:
-    //        setpresettype("Plfofrequency");
-    //        break;
-    //    case 1:
-    //        setpresettype("Plfoamplitude");
-    //        break;
-    //    case 2:
-    //        setpresettype("Plfofilter");
-    //        break;
-    //}
+                     char fel_,
+                     const AbsTime *time_) : time(time_),
+                                             last_update_timestamp(0) {
+    switch(fel_) {
+        case 0:
+            setpresettype("Plfofrequency");
+            break;
+        case 1:
+            setpresettype("Plfoamplitude");
+            break;
+        case 2:
+            setpresettype("Plfofilter");
+            break;
+    }
     Dfreq       = Pfreq_;
     Dintensity  = Pintensity_;
     Dstartphase = Pstartphase_;
@@ -94,7 +99,6 @@ LFOParams::LFOParams(char Pfreq_,
     Ddelay      = Pdelay_;
     Dcontinous  = Pcontinous_;
     fel  = fel_;
-    time = 0;
 
     defaults();
 }
@@ -116,36 +120,47 @@ void LFOParams::defaults()
 }
 
 
-void LFOParams::add2XML(XMLwrapper *xml)
+void LFOParams::add2XML(XMLwrapper& xml)
 {
-    xml->addparreal("freq", Pfreq);
-    xml->addpar("intensity", Pintensity);
-    xml->addpar("start_phase", Pstartphase);
-    xml->addpar("lfo_type", PLFOtype);
-    xml->addpar("randomness_amplitude", Prandomness);
-    xml->addpar("randomness_frequency", Pfreqrand);
-    xml->addpar("delay", Pdelay);
-    xml->addpar("stretch", Pstretch);
-    xml->addparbool("continous", Pcontinous);
+    xml.addparreal("freq", Pfreq);
+    xml.addpar("intensity", Pintensity);
+    xml.addpar("start_phase", Pstartphase);
+    xml.addpar("lfo_type", PLFOtype);
+    xml.addpar("randomness_amplitude", Prandomness);
+    xml.addpar("randomness_frequency", Pfreqrand);
+    xml.addpar("delay", Pdelay);
+    xml.addpar("stretch", Pstretch);
+    xml.addparbool("continous", Pcontinous);
 }
 
-void LFOParams::getfromXML(XMLwrapper *xml)
+void LFOParams::getfromXML(XMLwrapper& xml)
 {
-    Pfreq       = xml->getparreal("freq", Pfreq, 0.0f, 1.0f);
-    Pintensity  = xml->getpar127("intensity", Pintensity);
-    Pstartphase = xml->getpar127("start_phase", Pstartphase);
-    PLFOtype    = xml->getpar127("lfo_type", PLFOtype);
-    Prandomness = xml->getpar127("randomness_amplitude", Prandomness);
-    Pfreqrand   = xml->getpar127("randomness_frequency", Pfreqrand);
-    Pdelay      = xml->getpar127("delay", Pdelay);
-    Pstretch    = xml->getpar127("stretch", Pstretch);
-    Pcontinous  = xml->getparbool("continous", Pcontinous);
+    Pfreq       = xml.getparreal("freq", Pfreq, 0.0f, 1.0f);
+    Pintensity  = xml.getpar127("intensity", Pintensity);
+    Pstartphase = xml.getpar127("start_phase", Pstartphase);
+    PLFOtype    = xml.getpar127("lfo_type", PLFOtype);
+    Prandomness = xml.getpar127("randomness_amplitude", Prandomness);
+    Pfreqrand   = xml.getpar127("randomness_frequency", Pfreqrand);
+    Pdelay      = xml.getpar127("delay", Pdelay);
+    Pstretch    = xml.getpar127("stretch", Pstretch);
+    Pcontinous  = xml.getparbool("continous", Pcontinous);
 }
 
+#define COPY(y) this->y=x.y
 void LFOParams::paste(LFOParams &x)
 {
-    //Avoid undefined behavior
-    if(&x == this)
-        return;
-    memcpy((char*)this, (const char*)&x, sizeof(*this));
+    COPY(Pfreq);
+    COPY(Pintensity);
+    COPY(Pstartphase);
+    COPY(PLFOtype);
+    COPY(Prandomness);
+    COPY(Pfreqrand);
+    COPY(Pdelay);
+    COPY(Pcontinous);
+    COPY(Pstretch);
+
+    if ( time ) {
+        last_update_timestamp = time->time();
+    }
 }
+#undef COPY

@@ -26,6 +26,7 @@
 #include <string>
 #include <vector>
 #include "../globals.h"
+#include "Config.h"
 
 //entries in a bank
 #define BANK_SIZE 160
@@ -35,7 +36,7 @@ class Bank
 {
     public:
         /**Constructor*/
-        Bank();
+        Bank(Config* config);
         ~Bank();
         std::string getname(unsigned int ninstrument);
         std::string getnamenumbered(unsigned int ninstrument);
@@ -64,6 +65,9 @@ class Bank
         int locked();
 
         void rescanforbanks();
+
+        void setMsb(uint8_t msb);
+        void setLsb(uint8_t lsb);
 
         struct bankstruct {
             bool operator<(const bankstruct &b) const;
@@ -96,6 +100,12 @@ class Bank
         std::string dirname;
 
         void scanrootdir(std::string rootdir); //scans a root dir for banks
+        
+        Config* const config;
+
+    public:
+        uint8_t bank_msb;
+        uint8_t bank_lsb;
 };
 
 #endif

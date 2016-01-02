@@ -19,8 +19,10 @@
 
 */
 
+#include <rtosc/thread-link.h>
 #include <lo/lo.h>
 #include <string>
+#include <thread>
 
 //GUI System
 #include "Connection.h"
@@ -33,9 +35,6 @@ NSM_Client *nsm = 0;
 #endif
 lo_server server;
 std::string sendtourl;
-
-int ADnote_unison_sizes[] =
-{1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30, 40, 50, 0};
 
 /*
  * Program exit
@@ -90,15 +89,25 @@ class MasterUI *ui=0;
 static Fl_Tiled_Image *module_backdrop;
 #endif
 
-int undo_redo_handler(int)
+int kb_shortcut_handler(int)
 {
     const bool undo_ = Fl::event_ctrl() && Fl::event_key() == 'z';
     const bool redo = Fl::event_ctrl() && Fl::event_key() == 'r';
+    const bool show = Fl::event_ctrl() && Fl::event_shift() &&
+        Fl::event_key() == 's';
+    const bool panel = Fl::event_ctrl() && Fl::event_shift() &&
+        Fl::event_key() == 'p';
     if(undo_)
         ui->osc->write("/undo", "");
     else if(redo)
         ui->osc->write("/redo", "");
-    return undo_ || redo;
+    else if (show) {
+        ui->simplemasterwindow->hide();
+        ui->masterwindow->show();
+    }
+    else if (panel)
+        ui->panelwindow->show();
+    return undo_ || redo || show;
 }
 
 void
@@ -128,23 +137,38 @@ ui_handle_t GUI::createUi(Fl_Osc_Interface *osc, void *exit)
 
     Fl_Dial::default_style(Fl_Dial::PIXMAP_DIAL);
 
+#ifdef CARLA_VERSION_STRING
+    if(Fl_Shared_Image *img = Fl_Shared_Image::get(gUiPixmapPath + "/knob.png"))
+        Fl_Dial::default_image(img);
+#else
     if(Fl_Shared_Image *img = Fl_Shared_Image::get(PIXMAP_PATH "/knob.png"))
         Fl_Dial::default_image(img);
+#endif
     else if(Fl_Shared_Image *img = Fl_Shared_Image::get(SOURCE_DIR "/pixmaps/knob.png"))
         Fl_Dial::default_image(img);
     else
         errx(1, "ERROR: Cannot find pixmaps/knob.png");
 
 
+#ifdef CARLA_VERSION_STRING
+    if(Fl_Shared_Image *img = Fl_Shared_Image::get(gUiPixmapPath + "/window_backdrop.png"))
+        Fl::scheme_bg(new Fl_Tiled_Image(img));
+#else
     if(Fl_Shared_Image *img = Fl_Shared_Image::get(PIXMAP_PATH "/window_backdrop.png"))
         Fl::scheme_bg(new Fl_Tiled_Image(img));
+#endif
     else if(Fl_Shared_Image *img = Fl_Shared_Image::get(SOURCE_DIR "/pixmaps/window_backdrop.png"))
         Fl::scheme_bg(new Fl_Tiled_Image(img));
     else
         errx(1, "ERROR: Cannot find pixmaps/window_backdrop.png");
 
+#ifdef CARLA_VERSION_STRING
+    if(Fl_Shared_Image *img = Fl_Shared_Image::get(gUiPixmapPath + "/module_backdrop.png"))
+        module_backdrop = new Fl_Tiled_Image(img);
+#else
     if(Fl_Shared_Image *img = Fl_Shared_Image::get(PIXMAP_PATH "/module_backdrop.png"))
         module_backdrop = new Fl_Tiled_Image(img);
+#endif
     else if(Fl_Shared_Image *img = Fl_Shared_Image::get(SOURCE_DIR "/pixmaps/module_backdrop.png"))
         module_backdrop = new Fl_Tiled_Image(img);
     else
@@ -162,7 +186,7 @@ ui_handle_t GUI::createUi(Fl_Osc_Interface *osc, void *exit)
     //tree->osc           = osc;
     //midi_win->show();
 
-    Fl::add_handler(undo_redo_handler);
+    Fl::add_handler(kb_shortcut_handler);
     return (void*) (ui = new MasterUI((int*)exit, osc));
 }
 void GUI::destroyUi(ui_handle_t ui)
@@ -208,10 +232,14 @@ rtosc::Ports uiPorts::ports = {
         ui->do_load_master(a0.s);
     } END
     BEGIN("vu-meter:bb") {
+#ifdef DEBUG
         printf("Vu meter handler...\n");
+#endif
         if(a0.b.len == sizeof(vuData) &&
                 a1.b.len == sizeof(float)*NUM_MIDI_PARTS) {
+#ifdef DEBUG
             printf("Normal behavior...\n");
+#endif
             //Refresh the primary VU meters
             ui->simplemastervu->update((vuData*)a0.b.data);
             ui->mastervu->update((vuData*)a0.b.data);
@@ -233,7 +261,9 @@ void GUI::raiseUi(ui_handle_t gui, const char *message)
         return;
     MasterUI *mui = (MasterUI*)gui;
     mui->osc->tryLink(message);
+#ifdef DEBUG
     printf("got message for UI '%s:%s'\n", message, rtosc_argument_string(message));
+#endif
     char buffer[1024];
     memset(buffer, 0, sizeof(buffer));
     rtosc::RtData d;
@@ -310,13 +340,15 @@ class UI_Interface:public Fl_Osc_Interface
 
         void write(string s, const char *args, ...) override
         {
+            char buffer[4096];
             va_list va;
             va_start(va, args);
+            rtosc_vmessage(buffer, sizeof(buffer), s.c_str(), args, va);
             //fprintf(stderr, "%c[%d;%d;%dm", 0x1B, 0, 4 + 30, 0 + 40);
             ////fprintf(stderr, ".");
             //fprintf(stderr, "write(%s:%s)\n", s.c_str(), args);
             //fprintf(stderr, "%c[%d;%d;%dm", 0x1B, 0, 7 + 30, 0 + 40);
-            transmitMsg(s.c_str(), args, va);
+            transmitMsg(buffer);
             va_end(va);
         }
 
@@ -489,6 +521,8 @@ Fl_Osc_Interface *GUI::genOscInterface(MiddleWare *)
     return new UI_Interface();
 }
 
+rtosc::ThreadLink lo_buffer(4096*2, 1000);
+
 static void liblo_error_cb(int i, const char *m, const char *loc)
 {
     fprintf(stderr, "liblo :-( %d-%s@%s\n",i,m,loc);
@@ -501,33 +535,73 @@ static int handler_function(const char *path, const char *types, lo_arg **argv,
     (void) argv;
     (void) argc;
     (void) user_data;
-    char buffer[2048];
+    char buffer[8192];
     memset(buffer, 0, sizeof(buffer));
-    size_t size = 2048;
+    size_t size = sizeof(buffer);
+    assert(lo_message_length(msg, path) <= sizeof(buffer));
     lo_message_serialise(msg, path, buffer, &size);
-    raiseUi(gui, buffer);
+    assert(size <= sizeof(buffer));
+    lo_buffer.raw_write(buffer);
 
     return 0;
 }
 
+void watch_lo(void)
+{
+    while(server && Pexitprogram == 0)
+        lo_server_recv_noblock(server, 100);
+}
+
+const char *help_message =
+"zynaddsubfx-ext-gui [options] uri - Connect to remote ZynAddSubFX\n"
+"    --help   print this help message\n"
+"    --no-uri run without a remote ZynAddSubFX\n"
+"\n"
+"    example: zynaddsubfx-ext-gui osc.udp://localhost:1234/\n"
+"       use the -P option for zynaddsubfx to specify the port of the backend\n";
+
+#ifndef CARLA_VERSION_STRING
 int main(int argc, char *argv[])
 {
+    const char *uri    = NULL;
+    bool        help   = false;
+    bool        no_uri = false;
+    for(int i=1; i<argc; ++i) {
+        if(!strcmp("--help", argv[i]))
+            help = true;
+        else if(!strcmp("--no-uri", argv[i]))
+            no_uri = true;
+        else
+            uri = argv[i];
+    }
+    if(uri == NULL && no_uri == false)
+        help = true;
+
+    if(help) {
+        puts(help_message);
+        return 1;
+    }
+
     //Startup Liblo Link
-    if(argc == 2) {
+    if(uri) {
         server = lo_server_new_with_proto(NULL, LO_UDP, liblo_error_cb);
         lo_server_add_method(server, NULL, NULL, handler_function, 0);
         sendtourl = argv[1];
     }
-    
+    fprintf(stderr, "ext client running on %d\n", lo_server_get_port(server));
+    std::thread lo_watch(watch_lo);
+
     gui = GUI::createUi(new UI_Interface(), &Pexitprogram);
 
     GUI::raiseUi(gui, "/show",  "i", 1);
     while(Pexitprogram == 0) {
-        if(server)
-            while(lo_server_recv_noblock(server, 0));
         GUI::tickUi(gui);
+        while(lo_buffer.hasNext())
+            raiseUi(gui, lo_buffer.read());
     }
 
     exitprogram();
+    lo_watch.join();
     return 0;
 }
+#endif

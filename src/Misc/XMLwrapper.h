@@ -24,12 +24,29 @@
 
 #include <mxml.h>
 #include <string>
-#ifndef float
-#define float float
-#endif
+#include <vector>
 
 #ifndef XML_WRAPPER_H
 #define XML_WRAPPER_H
+
+class XmlAttr
+{
+    public:
+        std::string name;
+        std::string value;
+};
+
+
+class XmlNode
+{
+    public:
+        XmlNode(std::string name_);
+        std::string          name;
+        std::vector<XmlAttr> attrs;
+
+        std::string &operator[](std::string name);
+        bool has(std::string);
+};
 
 /**Mxml wrapper*/
 class XMLwrapper
@@ -49,7 +66,7 @@ class XMLwrapper
          * @param filename the name of the destination file.
          * @returns 0 if ok or -1 if the file cannot be saved.
          */
-        int saveXMLfile(const std::string &filename) const;
+        int saveXMLfile(const std::string &filename, int compression) const;
 
         /**
          * Return XML tree as a string.
@@ -219,6 +236,10 @@ class XMLwrapper
          * Checks the current tree for PADsynth usage
          */
         bool hasPadSynth() const;
+
+        void add(const XmlNode &node);
+
+        std::vector<XmlNode> getBranch(void) const;
 
     private:
 

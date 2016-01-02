@@ -71,7 +71,7 @@ FormantFilter::FormantFilter(FilterParams *pars, Allocator *alloc, unsigned int 
     outgain = dB2rap(pars->getgain());
 
     oldinput   = -1.0f;
-    Qfactor    = 1.0f;
+    Qfactor = pars->getq();
     oldQfactor = Qfactor;
     firsttime  = 1;
 }
@@ -88,9 +88,17 @@ void FormantFilter::cleanup()
         formant[i]->cleanup();
 }
 
-void FormantFilter::setpos(float input)
+inline float log_2(float x)
+{
+    return logf(x) / logf(2.0f);
+}
+
+void FormantFilter::setpos(float frequency)
 {
     int p1, p2;
+
+    //Convert form real freq[Hz]
+    const float input = log_2(frequency) - 9.96578428f; //log2(1000)=9.95748f.
 
     if(firsttime != 0)
         slowinput = input;
@@ -107,21 +115,16 @@ void FormantFilter::setpos(float input)
     else
         oldinput = input;
 
-    float pos = fmodf(input * sequencestretch, 1.0f);
-    if(pos < 0.0f)
-        pos += 1.0f;
+    float pos = input * sequencestretch;
+    pos -= floorf(pos);
 
     F2I(pos * sequencesize, p2);
     p1 = p2 - 1;
     if(p1 < 0)
         p1 += sequencesize;
 
-    pos = fmodf(pos * sequencesize, 1.0f);
-    if(pos < 0.0f)
-        pos = 0.0f;
-    else
-    if(pos > 1.0f)
-        pos = 1.0f;
+    pos = pos * sequencesize;
+    pos -= floorf(pos);
     pos =
         (atanf((pos * 2.0f
                 - 1.0f)
@@ -188,18 +191,10 @@ void FormantFilter::setq(float q_)
 void FormantFilter::setgain(float /*dBgain*/)
 {}
 
-inline float log_2(float x)
-{
-    return logf(x) / logf(2.0f);
-}
-
 void FormantFilter::setfreq_and_q(float frequency, float q_)
 {
-    //Convert form real freq[Hz]
-    const float freq = log_2(frequency) - 9.96578428f; //log2(1000)=9.95748f.
-
     Qfactor = q_;
-    setpos(freq);
+    setpos(frequency);
 }
 
 

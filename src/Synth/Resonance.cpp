@@ -32,7 +32,7 @@
 using namespace rtosc;
 const rtosc::Ports Resonance::ports = {
     rSelf(Resonance),
-    rPaste(),
+    rPaste,
     rToggle(Penabled, "resonance enable"),
     rToggle(Pprotectthefundamental, "Disable resonance filter on first harmonic"),
     rParams(Prespoints, N_RES_POINTS, "Resonance data points"),
@@ -44,7 +44,7 @@ const rtosc::Ports Resonance::ports = {
     rAction(smooth, "Smooth out frequency response"),
     rAction(zero,   "Reset frequency response"),
     //UI Value listeners
-    {"centerfreq:", rDoc("Get center frequency"),  NULL,
+    {"centerfreq:", rDoc("Get center frequency") rMap(unit, Hz),  NULL,
         [](const char *, RtData &d)
         {d.reply(d.loc, "f", ((rObject*)d.obj)->getcenterfreq());}},
     {"octavesfreq:", rDoc("Get center freq of graph"), NULL,
@@ -98,11 +98,11 @@ void Resonance::applyres(int n, fft_t *fftdata, float freq) const
 
     //Provide an upper bound for resonance
     const float upper =
-        limit<float>(array_max(Prespoints, N_RES_POINTS), 1.0f, INFINITY);
+        limit<float>(array_max(Prespoints, N_RES_POINTS), 1.0f, (float)INFINITY);
 
     for(int i = 1; i < n; ++i) {
         //compute where the n-th hamonics fits to the graph
-        const float x  = limit((logf(freq*i) - l1) / l2, 0.0f, INFINITY) * N_RES_POINTS;
+        const float x  = limit((logf(freq*i) - l1) / l2, 0.0f, (float)INFINITY) * N_RES_POINTS;
         const float dx = x - floor(x);
         const int kx1  = limit<int>(floor(x), 0, N_RES_POINTS - 1);
         const int kx2  = limit<int>(kx1 + 1,  0, N_RES_POINTS - 1);
@@ -136,7 +136,7 @@ float Resonance::getfreqresponse(float freq) const
         limit<float>(array_max(Prespoints, N_RES_POINTS), 1.0f, INFINITY);
 
     //compute where the n-th hamonics fits to the graph
-    const float x   = limit((logf(freq) - l1) / l2, 0.0f, INFINITY) * N_RES_POINTS;
+    const float x   = limit((logf(freq) - l1) / l2, 0.0f, (float)INFINITY) * N_RES_POINTS;
     const float dx  = x - floor(x);
     const int   kx1 = limit<int>(floor(x), 0, N_RES_POINTS - 1);
     const int   kx2 = limit<int>(kx1 + 1,  0, N_RES_POINTS - 1);
@@ -251,44 +251,55 @@ void Resonance::sendcontroller(MidiControllers ctl, float par)
         ctlbw = par;
 }
 
+#define COPY(y) this->y = r.y
 void Resonance::paste(Resonance &r)
 {
-    memcpy((char*)this, (char*)&r, sizeof(r));
+    COPY(Penabled);
+    for(int i=0; i<N_RES_POINTS; ++i)
+        this->Prespoints[i] = r.Prespoints[i];
+    COPY(PmaxdB);
+    COPY(Pcenterfreq);
+    COPY(Poctavesfreq);
+    COPY(Pprotectthefundamental);
+
+    COPY(ctlcenter);
+    COPY(ctlbw);
 }
+#undef COPY
 
-void Resonance::add2XML(XMLwrapper *xml)
+void Resonance::add2XML(XMLwrapper& xml)
 {
-    xml->addparbool("enabled", Penabled);
+    xml.addparbool("enabled", Penabled);
 
-    if((Penabled == 0) && (xml->minimal))
+    if((Penabled == 0) && (xml.minimal))
         return;
 
-    xml->addpar("max_db", PmaxdB);
-    xml->addpar("center_freq", Pcenterfreq);
-    xml->addpar("octaves_freq", Poctavesfreq);
-    xml->addparbool("protect_fundamental_frequency", Pprotectthefundamental);
-    xml->addpar("resonance_points", N_RES_POINTS);
+    xml.addpar("max_db", PmaxdB);
+    xml.addpar("center_freq", Pcenterfreq);
+    xml.addpar("octaves_freq", Poctavesfreq);
+    xml.addparbool("protect_fundamental_frequency", Pprotectthefundamental);
+    xml.addpar("resonance_points", N_RES_POINTS);
     for(int i = 0; i < N_RES_POINTS; ++i) {
-        xml->beginbranch("RESPOINT", i);
-        xml->addpar("val", Prespoints[i]);
-        xml->endbranch();
+        xml.beginbranch("RESPOINT", i);
+        xml.addpar("val", Prespoints[i]);
+        xml.endbranch();
     }
 }
 
 
-void Resonance::getfromXML(XMLwrapper *xml)
+void Resonance::getfromXML(XMLwrapper& xml)
 {
-    Penabled = xml->getparbool("enabled", Penabled);
+    Penabled = xml.getparbool("enabled", Penabled);
 
-    PmaxdB       = xml->getpar127("max_db", PmaxdB);
-    Pcenterfreq  = xml->getpar127("center_freq", Pcenterfreq);
-    Poctavesfreq = xml->getpar127("octaves_freq", Poctavesfreq);
-    Pprotectthefundamental = xml->getparbool("protect_fundamental_frequency",
+    PmaxdB       = xml.getpar127("max_db", PmaxdB);
+    Pcenterfreq  = xml.getpar127("center_freq", Pcenterfreq);
+    Poctavesfreq = xml.getpar127("octaves_freq", Poctavesfreq);
+    Pprotectthefundamental = xml.getparbool("protect_fundamental_frequency",
                                              Pprotectthefundamental);
     for(int i = 0; i < N_RES_POINTS; ++i) {
-        if(xml->enterbranch("RESPOINT", i) == 0)
+        if(xml.enterbranch("RESPOINT", i) == 0)
             continue;
-        Prespoints[i] = xml->getpar127("val", Prespoints[i]);
-        xml->exitbranch();
+        Prespoints[i] = xml.getpar127("val", Prespoints[i]);
+        xml.exitbranch();
     }
 }

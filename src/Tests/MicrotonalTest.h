@@ -34,9 +34,11 @@ using namespace std;
 class MicrotonalTest:public CxxTest::TestSuite
 {
     public:
+        int compression;
         void setUp() {
-            synth     = new SYNTH_T;
-            testMicro = new Microtonal();
+            compression = 0;
+            synth       = new SYNTH_T;
+            testMicro   = new Microtonal(compression);
         }
 
         void tearDown() {
@@ -80,12 +82,12 @@ class MicrotonalTest:public CxxTest::TestSuite
                                       //seems to exist from MICROTONAL being on the
                                       //top of the stack
             xml.beginbranch("MICROTONAL");
-            testMicro->add2XML(&xml);
+            testMicro->add2XML(xml);
             xml.endbranch();
             xml.endbranch();
 
             char *tmp = xml.getXMLdata();
-            Microtonal other;
+            Microtonal other(compression);
 
             other.Penabled = 1;
             strcpy((char *)other.Pname, "Myname"); //will be nicer with strings
@@ -95,7 +97,7 @@ class MicrotonalTest:public CxxTest::TestSuite
             TS_ASSERT(xml.enterbranch("Dummy"));
             TS_ASSERT(xml.enterbranch("MICROTONAL"));
 
-            other.getfromXML(&xml);
+            other.getfromXML(xml);
             xml.exitbranch();
             xml.exitbranch();
             char *tmpo = xml.getXMLdata();

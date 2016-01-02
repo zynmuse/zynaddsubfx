@@ -24,32 +24,26 @@
 
 #include <pthread.h>
 
-#include "Alienwah.h"
-#include "Phaser.h"
-#include "../Params/Presets.h"
-
 class Effect;
 class FilterParams;
 class XMLwrapper;
 class Allocator;
 
-#include "Distorsion.h"
-#include "EQ.h"
-#include "DynamicFilter.h"
 #include "../Params/FilterParams.h"
 #include "../Params/Presets.h"
 
-/**Effect manager, an interface betwen the program and effects*/
+/** Effect manager, an interface between the program and effects */
 class EffectMgr:public Presets
 {
     public:
-        EffectMgr(Allocator &alloc, const bool insertion_);
+        EffectMgr(Allocator &alloc, const SYNTH_T &synth, const bool insertion_,
+              const AbsTime *time_ = nullptr);
         ~EffectMgr();
 
         void paste(EffectMgr &e);
-        void add2XML(XMLwrapper *xml);
+        void add2XML(XMLwrapper& xml);
         void defaults(void) REALTIME;
-        void getfromXML(XMLwrapper *xml);
+        void getfromXML(XMLwrapper& xml);
 
         void out(float *smpsl, float *smpsr) REALTIME;
 
@@ -62,11 +56,11 @@ class EffectMgr:public Presets
         void kill(void) REALTIME;
         void cleanup(void) REALTIME;
 
-        void changeeffectrt(int nefx_) REALTIME;
+        void changeeffectrt(int nefx_, bool avoidSmash=false) REALTIME;
         void changeeffect(int nefx_) NONREALTIME;
         int geteffect(void);
         void changepreset(unsigned char npreset) NONREALTIME;
-        void changepresetrt(unsigned char npreset) REALTIME;
+        void changepresetrt(unsigned char npreset, bool avoidSmash=false) REALTIME;
         unsigned char getpreset(void);
         void seteffectpar(int npar, unsigned char value) NONREALTIME;
         void seteffectparrt(int npar, unsigned char value) REALTIME;
@@ -84,15 +78,16 @@ class EffectMgr:public Presets
         static const rtosc::Ports &ports;
         int     nefx;
         Effect *efx;
+        const AbsTime *time;
     private:
 
         //Parameters Prior to initialization
-        char effect_id;
         char preset;
         char settings[128];
 
         bool dryonly;
         Allocator &memory;
+        const SYNTH_T &synth;
 };
 
 #endif

@@ -53,6 +53,8 @@ class ADnote:public SynthNote
         int noteout(float *outl, float *outr);
         void releasekey();
         int finished() const;
+
+        virtual SynthNote *cloneLegato(void) override;
     private:
 
         /**Changes the frequency of an oscillator.
@@ -97,11 +99,11 @@ class ADnote:public SynthNote
         inline void ComputeVoiceOscillatorPitchModulation(int nvoice);
 
         /**Generate Noise Samples for Voice*/
-        inline void ComputeVoiceNoise(int nvoice);
+        inline void ComputeVoiceWhiteNoise(int nvoice);
+        inline void ComputeVoicePinkNoise(int nvoice);
 
         /**Fadein in a way that removes clicks but keep sound "punchy"*/
         inline void fadein(float *smps) const;
-
 
         //GLOBALS
         ADnoteParameters &pars;
@@ -118,6 +120,8 @@ class ADnote:public SynthNote
         struct Global {
             void kill(Allocator &memory);
             void initparameters(const ADnoteGlobalParam &param,
+                                const SYNTH_T &synth,
+                                const AbsTime &time,
                                 class Allocator &memory,
                                 float basefreq, float velocity,
                                 bool stereo);
@@ -139,6 +143,7 @@ class ADnote:public SynthNote
             Envelope *AmpEnvelope;
             LFO      *AmpLfo;
 
+            float Fadein_adjustment;
             struct {
                 int   Enabled;
                 float initialvalue, dt, t;
@@ -165,7 +170,7 @@ class ADnote:public SynthNote
         /***********************************************************/
         struct Voice {
             void releasekey();
-            void kill(Allocator &memory);
+            void kill(Allocator &memory, const SYNTH_T &synth);
             /* If the voice is enabled */
             ONOFFTYPE Enabled;
 
@@ -181,6 +186,12 @@ class ADnote:public SynthNote
             /* Waveform of the Voice */
             float *OscilSmp;
 
+            /* preserved for phase mod PWM emulation. */
+            int phase_offset;
+
+            /* Range of waveform */
+            float OscilSmpMin, OscilSmpMax;
+
             /************************************
             *     FREQUENCY PARAMETERS          *
             ************************************/
@@ -189,6 +200,11 @@ class ADnote:public SynthNote
 
             // cents = basefreq*VoiceDetune
             float Detune, FineDetune;
+
+            // Bend adjustment
+            float BendAdjust;
+
+            float OffsetHz;
 
             Envelope *FreqEnvelope;
             LFO      *FreqLfo;
@@ -225,6 +241,8 @@ class ADnote:public SynthNote
 
             FMTYPE FMEnabled;
 
+            unsigned char FMFreqFixed;
+
             int FMVoice;
 
             // Voice Output used by other voices if use this as modullator
@@ -245,8 +263,8 @@ class ADnote:public SynthNote
         /*    INTERNAL VALUES OF THE NOTE AND OF THE VOICES     */
         /********************************************************/
 
-        //time from the start of the note
-        float time;
+	//pinking filter (Paul Kellet)
+	float pinking[NUM_VOICES][14]; 
 
         //the size of unison for a single voice
         int unison_size[NUM_VOICES];

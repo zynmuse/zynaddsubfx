@@ -3,12 +3,18 @@
 #include <cstdarg>
 #include <string>
 
+struct SYNTH_T;
+class  Master;
+class PresetsStore;
+
 //Link between realtime and non-realtime layers
 class MiddleWare
 {
     public:
-        MiddleWare(void);
+        MiddleWare(SYNTH_T synth, class Config *config,
+                   int preferred_port = -1);
         ~MiddleWare(void);
+        void updateResources(Master *m);
         //returns internal master pointer
         class Master *spawnMaster(void);
         //return  UI interface
@@ -16,7 +22,7 @@ class MiddleWare
         //Set callback to push UI events to
         void setUiCallback(void(*cb)(void*,const char *),void *ui);
         //Set callback to run while busy
-        void setIdleCallback(void(*cb)(void));
+        void setIdleCallback(void(*cb)(void*),void *ptr);
         //Handle events
         void tick(void);
         //Do A Readonly Operation (For Parameter Copy)
@@ -26,12 +32,28 @@ class MiddleWare
         //Handle a rtosc Message uToB
         void transmitMsg(const char *, const char *args, ...);
         //Handle a rtosc Message uToB
-        void transmitMsg(const char *, const char *args, va_list va);
+        void transmitMsg_va(const char *, const char *args, va_list va);
+
+        //Send a message to middleware from an arbitrary thread
+        void messageAnywhere(const char *msg, const char *args, ...);
+
+        //Indicate that a bank will be loaded
+        //NOTE: Can only be called by realtime thread
+        void pendingSetBank(int bank);
         //Indicate that a program will be loaded on a known part
+        //NOTE: Can only be called by realtime thread
         void pendingSetProgram(int part, int program);
+
         //Get/Set the active bToU url
         std::string activeUrl(void);
         void activeUrl(std::string u);
+        //View Synthesis Parameters
+        const SYNTH_T &getSynth(void) const;
+        //liblo stuff
+        const char* getServerAddress(void) const;
+        
+        const PresetsStore& getPresetsStore() const;
+        PresetsStore& getPresetsStore();
     private:
         class MiddleWareImpl *impl;
 };

@@ -24,6 +24,7 @@
 #include "../Misc/Util.h"
 
 #include <cmath>
+#include "globals.h"
 
 EffectLFO::EffectLFO(float srate_f, float bufsize_f)
     :Pfreq(40),
@@ -59,7 +60,8 @@ void EffectLFO::updateparams(void)
     if(PLFOtype > 1)
         PLFOtype = 1;  //this has to be updated if more lfo's are added
     lfotype = PLFOtype;
-    xr      = fmodf(xl + (Pstereo - 64.0f) / 127.0f + 1.0f, 1.0f);
+    xr      = xl + (Pstereo - 64.0f) / 127.0f + 1.0f;
+    xr      -= floorf(xr);
 }
 
 
@@ -79,7 +81,7 @@ float EffectLFO::getlfoshape(float x)
             break;
         //when adding more, ensure ::updateparams() gets updated
         default:
-            out = cosf(x * 2.0f * PI); //EffectLFO_SINE
+            out = cosf(x * 2.0f * PI); //EffectLFO_SINE // TODO: use M_PI ?
     }
     return out;
 }

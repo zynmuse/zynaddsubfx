@@ -44,8 +44,8 @@ using namespace std;
 
 extern char *instance_name;
 
-JackEngine::JackEngine()
-    :AudioOut(), jackClient(NULL)
+JackEngine::JackEngine(const SYNTH_T &synth)
+    :AudioOut(synth), jackClient(NULL)
 {
     name = "JACK";
     audio.jackSamplerate = 0;
@@ -56,6 +56,7 @@ JackEngine::JackEngine()
     }
     midi.inport = NULL;
     midi.jack_sync = false;
+    osc.oscport = NULL;
 }
 
 bool JackEngine::connectServer(string server)

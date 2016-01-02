@@ -3,6 +3,7 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include "../Misc/Time.h"
 #include "../Misc/MiddleWare.h"
 #include "../Misc/Part.h"
 #include "../Misc/Util.h"
@@ -11,6 +12,7 @@
 #include "../DSP/FFTwrapper.h"
 #include "../globals.h"
 SYNTH_T *synth;
+AbsTime *time_;
 
 using namespace std;
 
@@ -24,9 +26,10 @@ enum RunMode {
 
 RunMode mode;
 
+int compress = 0;
 float *outL, *outR;
-Allocator  alloc;
-Microtonal microtonal;
+Alloc      alloc;
+Microtonal microtonal(compress);
 FFTwrapper fft(1024);
 Part *p;
 
@@ -45,11 +48,13 @@ double toc()
     return tic();
 }
 
+int interp=1;
 void setup() {
     synth = new SYNTH_T;
     synth->buffersize = 256;
     synth->samplerate = 48000;
     synth->alias();
+    time_ = new AbsTime(*synth);
     //for those patches that are just really big
     alloc.addMemory(malloc(1024*1024),1024*1024);
 
@@ -60,12 +65,7 @@ void setup() {
     for(int i = 0; i < synth->buffersize; ++i)
         outR[i] = 0.0f;
 
-    //next the bad global variables that for some reason have not been properly placed in some
-    //initialization routine, but rather exist as cryptic oneliners in main.cpp:
-    denormalkillbuf = new float[synth->buffersize];
-    for(int i = 0; i < synth->buffersize; ++i)
-        denormalkillbuf[i] = 0;
-    p = new Part(alloc, &microtonal, &fft);
+    p = new Part(alloc, *synth, *time_, compress, interp, &microtonal, &fft);
 }
 
 void xml(string s)
@@ -89,10 +89,12 @@ void load()
 
 void noteOn()
 {
+    int total_notes = 0;
     double t_on = tic(); // timer before calling func
     for(int i=40; i<100; ++i)
-        p->NoteOn(i,100,0);
+        total_notes += p->NoteOn(i,100,0);
     double t_off = toc(); // timer when func returns
+    printf("%d, ", total_notes);
     if(mode == MODE_PROFILE)
         printf("%f, ", t_off - t_on);
 }
@@ -136,10 +138,12 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    mode = MODE_TEST;
+    mode = MODE_PROFILE;
     setup();
     xml(argv[1]);
     load();
+    memUsage();
+    printf(", ");
     noteOn();
     speed();
     noteOff();

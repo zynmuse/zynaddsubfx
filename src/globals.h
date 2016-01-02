@@ -33,7 +33,7 @@
 #endif
 
 //Forward Declarations
-namespace rtosc{struct Ports; class ThreadLink;};
+namespace rtosc{struct Ports; struct ClonePorts; struct MergePorts; class ThreadLink;};
 class  EffectMgr;
 class  ADnoteParameters;
 struct ADnoteGlobalParam;
@@ -42,6 +42,8 @@ class  PADnoteParameters;
 class  SynthNote;
 
 class  Allocator;
+class  AbsTime;
+class  RelTime;
 
 class  Microtonal;
 class  XMLwrapper;
@@ -142,6 +144,14 @@ typedef std::complex<fftw_real> fft_t;
 #define PART_MAX_NAME_LEN 30
 
 /*
+ * The maximum we allow for an XMZ path
+ *
+ * Note that this is an ugly hack.  Finding a compile time path
+ * max portably is painful.
+ */
+#define XMZ_PATH_MAX 1024
+
+/*
  * The maximum number of bands of the equaliser
  */
 #define MAX_EQ_BANDS 8
@@ -162,9 +172,16 @@ typedef std::complex<fftw_real> fft_t;
 #define FF_MAX_FORMANTS 12
 #define FF_MAX_SEQUENCE 8
 
+#define MAX_PRESETTYPE_SIZE 30
+
 #define LOG_2 0.693147181f
 #define PI 3.1415926536f
 #define LOG_10 2.302585093f
+
+/*
+ * For de-pop adjustment
+ */
+#define FADEIN_ADJUSTMENT_SCALE 20
 
 /*
  * Envelope Limits
@@ -249,22 +266,51 @@ enum LegatoMsg {
 #define O_BINARY 0
 #endif
 
+template<class T>
+class m_unique_ptr
+{
+    T* ptr = nullptr;
+public:
+    m_unique_ptr() = default;
+    m_unique_ptr(m_unique_ptr&& other) {
+        ptr = other.ptr;
+        other.ptr = nullptr;
+    }
+    m_unique_ptr(const m_unique_ptr& other) = delete;
+    ~m_unique_ptr() { ptr = nullptr; }
+    void resize(unsigned sz) {
+        delete[] ptr;
+        ptr = new T[sz]; }
+
+    operator T*() { return ptr; }
+    operator const T*() const { return ptr; }
+    //T& operator[](unsigned idx) { return ptr[idx]; }
+    //const T& operator[](unsigned idx) const { return ptr[idx]; }
+};
+
 //temporary include for synth->{samplerate/buffersize} members
 struct SYNTH_T {
+
     SYNTH_T(void)
         :samplerate(44100), buffersize(256), oscilsize(1024)
     {
-        alias();
+        alias(false);
     }
+
+    SYNTH_T(const SYNTH_T& ) = delete;
+    SYNTH_T(SYNTH_T&& ) = default;
+
+    /** the buffer to add noise in order to avoid denormalisation */
+    m_unique_ptr<float> denormalkillbuf;
 
     /**Sampling rate*/
     unsigned int samplerate;
 
     /**
      * The size of a sound buffer (or the granularity)
-     * All internal transfer of sound data use buffer of this size
-     * All parameters are constant during this period of time, exception
-     * some parameters(like amplitudes) which are linear interpolated.
+     * All internal transfer of sound data use buffer of this size.
+     * All parameters are constant during this period of time, except
+     * some parameters(like amplitudes) which are linearly interpolated.
      * If you increase this you'll ecounter big latencies, but if you
      * decrease this the CPU requirements gets high.
      */
@@ -284,15 +330,11 @@ struct SYNTH_T {
     int   bufferbytes;
     float oscilsize_f;
 
-    inline void alias(void)
+    float dt(void) const
     {
-        halfsamplerate_f = (samplerate_f = samplerate) / 2.0f;
-        buffersize_f     = buffersize;
-        bufferbytes      = buffersize * sizeof(float);
-        oscilsize_f      = oscilsize;
+        return buffersize_f / samplerate_f;
     }
+    void alias(bool randomize=true);
     static float numRandom(void); //defined in Util.cpp for now
 };
-
-extern SYNTH_T *synth;
 #endif
