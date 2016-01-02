@@ -148,7 +148,7 @@ bool zynaddsubfx_t::advance() {
 
 zyn_tree_t::events_t_port_t::events_t_port_t(zyn_tree_t *parent) :
 	// todo: base, ext does not make sense here?
-	rtosc_in_port_t<notes_in>(*parent->get_ins()),
+	osc_in_port_t<notes_in>(*parent->get_ins()),
 	parent_ptr(parent),
 	ins(parent->get_ins())
 {
@@ -175,7 +175,7 @@ void zyn_tree_t::events_t_port_t::on_read(sample_no_t pos)
 	{
 		// for self_port_t, on_read is not virtual, so we call it manually...
 		// -> TODO?? probably the above comment is deprecated
-		std::pair<int, music_note_properties> p2 = notes_in::data->lines[rch.first][rch.second];
+		std::pair<int, daw::music_note_properties> p2 = notes_in::data->lines[rch.first][rch.second];
 
 		io::mlog << "first, second: " << p2.first << ", " << p2.second.value() << io::endl;
 
@@ -183,7 +183,7 @@ void zyn_tree_t::events_t_port_t::on_read(sample_no_t pos)
 		{
 			m_note_on_t& note_on_cmd = note_ons[rch.first];
 			// self_port_t must be completed manually:
-			note_on_cmd.cmd_ptr->port_at<2>().set(p2.second.velocity());
+			note_on_cmd.cmd_ptr->port_at<2>().set(p2.second.value());
 			note_on_cmd.cmd_ptr->command::update();
 
 			note_on_cmd.cmd_ptr->complete_buffer(); // TODO: call in on_read??
