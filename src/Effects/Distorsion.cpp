@@ -5,19 +5,10 @@
   Copyright (C) 2002-2005 Nasca Octavian Paul
   Author: Nasca Octavian Paul
 
-  This program is free software; you can redistribute it and/or modify
-  it under the terms of version 2 of the GNU General Public License
-  as published by the Free Software Foundation.
-
-  This program is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU General Public License (version 2 or later) for more details.
-
-  You should have received a copy of the GNU General Public License (version 2)
-  along with this program; if not, write to the Free Software Foundation,
-  Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
-
+  This program is free software; you can redistribute it and/or
+  modify it under the terms of the GNU General Public License
+  as published by the Free Software Foundation; either version 2
+  of the License, or (at your option) any later version.
 */
 
 #include "Distorsion.h"
@@ -25,6 +16,38 @@
 #include "../Misc/WaveShapeSmps.h"
 #include "../Misc/Allocator.h"
 #include <cmath>
+#include <rtosc/ports.h>
+#include <rtosc/port-sugar.h>
+
+#define rObject Distorsion
+#define rBegin [](const char *, rtosc::RtData &) {
+#define rEnd }
+
+rtosc::Ports Distorsion::ports = {
+    {"preset::i", rOptions(Alienwah 1, Alienwah 2, Alienwah 3, Alienwah 4)
+                  rDoc("Instrument Presets"), 0,
+                  rBegin;
+                  rEnd},
+    //Pvolume/Ppanning are common
+    rEffPar(Plrcross, 2, rShort("l/r"), "Left/Right Crossover"),
+    rEffPar(Pdrive,   3, rShort("drive"), "Input amplification"),
+    rEffPar(Plevel,   4, rShort("output"), "Output amplification"),
+    rEffPar(Ptype,    5, rShort("type"),
+            rOptions(Undistorted,
+                Arctangent, Asymmetric, Pow, Sine, Quantisize,
+                Zigzag, Limiter, Upper Limiter, Lower Limiter,
+                Inverse Limiter, Clip, Asym2, Pow2, sigmoid),
+            "Distortion Shape"),
+    rEffParTF(Pnegate, 6, rShort("neg"), "Negate Signal"),
+    rEffPar(Plpf, 7, rShort("lpf"), "Low Pass Cutoff"),
+    rEffPar(Phpf, 8, rShort("hpf"), "High Pass Cutoff"),
+    rEffParTF(Pstereo, 9, rShort("stereo"), "Stereo"),
+    rEffParTF(Pprefiltering, 10, rShort("p.filt"),
+                  "Filtering before/after non-linearity"),
+};
+#undef rBegin
+#undef rEnd
+#undef rObject
 
 Distorsion::Distorsion(EffectParams pars)
     :Effect(pars),

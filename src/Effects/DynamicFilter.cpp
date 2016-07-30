@@ -5,19 +5,10 @@
   Copyright (C) 2002-2005 Nasca Octavian Paul
   Author: Nasca Octavian Paul
 
-  This program is free software; you can redistribute it and/or modify
-  it under the terms of version 2 of the GNU General Public License
-  as published by the Free Software Foundation.
-
-  This program is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU General Public License (version 2 or later) for more details.
-
-  You should have received a copy of the GNU General Public License (version 2)
-  along with this program; if not, write to the Free Software Foundation,
-  Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
-
+  This program is free software; you can redistribute it and/or
+  modify it under the terms of the GNU General Public License
+  as published by the Free Software Foundation; either version 2
+  of the License, or (at your option) any later version.
 */
 
 #include <cmath>
@@ -25,6 +16,32 @@
 #include "DynamicFilter.h"
 #include "../DSP/Filter.h"
 #include "../Misc/Allocator.h"
+#include <rtosc/ports.h>
+#include <rtosc/port-sugar.h>
+
+#define rObject DynamicFilter
+#define rBegin [](const char *, rtosc::RtData &) {
+#define rEnd }
+
+rtosc::Ports DynamicFilter::ports = {
+    {"preset::i", rOptions(WahWah, AutoWah, Sweep, VocalMorph1, VocalMorph1)
+                  rDoc("Instrument Presets"), 0,
+                  rBegin;
+                  rEnd},
+    //Pvolume/Ppanning are common
+    rEffPar(Pfreq,      2, rShort("freq"),      "Effect Frequency"),
+    rEffPar(Pfreqrnd,   3, rShort("rand"),      "Frequency Randomness"),
+    rEffPar(PLFOtype,   4, rShort("shape"),
+          rOptions(sin, tri), "LFO Shape"),
+    rEffPar(PStereo,    5, rShort("stereo"),    "Stereo/Mono Mode"),
+    rEffPar(Pdepth,     6, rShort("depth"),     "LFO Depth"),
+    rEffPar(Pampsns,    7, rShort("sense"),     "how the filter varies according to the input amplitude"),
+    rEffPar(Pampsnsinv, 8, rShort("sns.inv"),   "Sense Inversion"),
+    rEffPar(Pampsmooth, 9, rShort("smooth"),    "how smooth the input amplitude changes the filter"),
+};
+#undef rBegin
+#undef rEnd
+#undef rObject
 
 DynamicFilter::DynamicFilter(EffectParams pars, const AbsTime *time)
     :Effect(pars),

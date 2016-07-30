@@ -4,19 +4,10 @@
   guimain.cpp  -  Main file of synthesizer GUI
   Copyright (C) 2015 Mark McCurry
 
-  This program is free software; you can redistribute it and/or modify
-  it under the terms of version 2 of the GNU General Public License
-  as published by the Free Software Foundation.
-
-  This program is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU General Public License (version 2 or later) for more details.
-
-  You should have received a copy of the GNU General Public License (version 2)
-  along with this program; if not, write to the Free Software Foundation,
-  Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
-
+  This program is free software; you can redistribute it and/or
+  modify it under the terms of the GNU General Public License
+  as published by the Free Software Foundation; either version 2
+  of the License, or (at your option) any later version.
 */
 
 #include <rtosc/thread-link.h>
@@ -30,8 +21,9 @@
 
 #include <sys/stat.h>
 GUI::ui_handle_t gui = 0;
+const char *embedId = NULL;
 #if USE_NSM
-NSM_Client *nsm = 0;
+NSM_Client *nsm = NULL;
 #endif
 lo_server server;
 std::string sendtourl;
@@ -75,6 +67,7 @@ int Pexitprogram = 0;
 #include <FL/Fl_Shared_Image.H>
 #include <FL/Fl_Tiled_Image.H>
 #include <FL/Fl_Dial.H>
+#include <FL/x.H>
 #include <err.h>
 #endif // NTK_GUI
 
@@ -84,6 +77,7 @@ int Pexitprogram = 0;
 
 using namespace GUI;
 class MasterUI *ui=0;
+bool isPlugin = false;
 
 #ifdef NTK_GUI
 static Fl_Tiled_Image *module_backdrop;
@@ -187,7 +181,29 @@ ui_handle_t GUI::createUi(Fl_Osc_Interface *osc, void *exit)
     //midi_win->show();
 
     Fl::add_handler(kb_shortcut_handler);
-    return (void*) (ui = new MasterUI((int*)exit, osc));
+
+    ui = new MasterUI((int*)exit, osc);
+
+    if (embedId != NULL)
+    {
+        if (long long winId = atoll(embedId))
+        {
+            // running as plugin
+            isPlugin = true;
+            MasterUI::menu_mastermenu[11].hide(); // file -> nio settings
+            MasterUI::menu_mastermenu[26].deactivate(); // misc -> switch interface mode
+#ifdef NTK_GUI
+            if (winId != 1)
+            {
+                MasterUI::menu_mastermenu[13].hide(); // file -> exit
+                fl_embed(ui->masterwindow, winId);
+            }
+#endif
+            ui->masterwindow->show();
+        }
+    }
+
+    return (void*) ui;
 }
 void GUI::destroyUi(ui_handle_t ui)
 {
@@ -454,7 +470,7 @@ class UI_Interface:public Fl_Osc_Interface
             //DEBUG
             //if(strcmp(msg, "/vu-meter"))//Ignore repeated message
             //    printf("trying the link for a '%s'<%s>\n", msg, rtosc_argument_string(msg));
-            const char *handle = rindex(msg,'/');
+            const char *handle = strrchr(msg,'/');
             if(handle)
                 ++handle;
 
@@ -556,14 +572,17 @@ const char *help_message =
 "zynaddsubfx-ext-gui [options] uri - Connect to remote ZynAddSubFX\n"
 "    --help   print this help message\n"
 "    --no-uri run without a remote ZynAddSubFX\n"
+"    --embed  window ID [Internal Flag For Embedding Windows]\n"
 "\n"
 "    example: zynaddsubfx-ext-gui osc.udp://localhost:1234/\n"
-"       use the -P option for zynaddsubfx to specify the port of the backend\n";
+"      This will connect to a running zynaddsubfx instance on the same\n"
+"      machine on port 1234.\n";
 
 #ifndef CARLA_VERSION_STRING
 int main(int argc, char *argv[])
 {
     const char *uri    = NULL;
+    const char *title  = NULL;
     bool        help   = false;
     bool        no_uri = false;
     for(int i=1; i<argc; ++i) {
@@ -571,6 +590,10 @@ int main(int argc, char *argv[])
             help = true;
         else if(!strcmp("--no-uri", argv[i]))
             no_uri = true;
+        else if(!strcmp("--embed", argv[i]))
+            embedId = argv[++i];
+        else if(!strcmp("--title", argv[i]))
+            title = argv[++i];
         else
             uri = argv[i];
     }
@@ -586,12 +609,15 @@ int main(int argc, char *argv[])
     if(uri) {
         server = lo_server_new_with_proto(NULL, LO_UDP, liblo_error_cb);
         lo_server_add_method(server, NULL, NULL, handler_function, 0);
-        sendtourl = argv[1];
+        sendtourl = uri;
     }
     fprintf(stderr, "ext client running on %d\n", lo_server_get_port(server));
     std::thread lo_watch(watch_lo);
 
     gui = GUI::createUi(new UI_Interface(), &Pexitprogram);
+
+    if (title != NULL)
+        GUI::raiseUi(gui, "/ui/title", "s", title);
 
     GUI::raiseUi(gui, "/show",  "i", 1);
     while(Pexitprogram == 0) {

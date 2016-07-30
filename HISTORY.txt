@@ -1,3 +1,35 @@
+2.5.4 (12 March 2016)
+        - Add realtime automation for subnote parameters
+        - Add FLTK UI for LV2 plugins
+        - Add support for '~' in bank paths
+        - Fix VST crashes
+        - Fix VST loading issues
+        - Fix Microtonal copy/paste
+        - Fix GCC 5.3.0 build issues
+        - Fix autosave disable flag
+        - Fix license headers
+        - Fix plugin library directory
+        - Fix uninitialized filter bug in subnote
+        - Fix broken instrument send
+
+2.5.3 (8 Feb 2016)
+        - Add LV2&VST support via DPF
+        - Add autosave
+        - Add realtime filter parameter updates
+        - Add LFO random mode
+        - Add more controls to DSSI plugin
+        - Add fixed frequency modulators
+        - Add more reset states to knobs/sliders
+        - Add PWM mod
+        - Fix Microtonal UI
+        - Fix 'Add Bank'
+        - Fix sustain bugs in 2.5.x series
+        - Fix mem pool exhaustion bug
+        - Fix PADnote copy/paste
+        - Fix Oscilgen copy/paste
+        - Fix Midi unlearn
+        - Other misc bug fixes
+
 2.5.2 (13 November 2015)
         - Add MIDI-Learn serialization
         - Add realtime updates for LFOs

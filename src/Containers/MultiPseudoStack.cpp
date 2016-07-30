@@ -1,3 +1,14 @@
+/*
+  ZynAddSubFX - a software synthesizer
+
+  MultiPseudoStack.cpp - Multiple-Writer Lock Free Datastructure
+  Copyright (C) 2016 Mark McCurry
+
+  This program is free software; you can redistribute it and/or
+  modify it under the terms of the GNU General Public License
+  as published by the Free Software Foundation; either version 2
+  of the License, or (at your option) any later version.
+*/
 #include "MultiPseudoStack.h"
 #include <cassert>
 #include <cstdio>
@@ -15,6 +26,11 @@ LockFreeQueue::LockFreeQueue(qli_t *data_, int n)
     tag  = new std::atomic<uint32_t>[n];
     for(int i=0; i<n; ++i)
         tag[i] = INVALID;
+}
+
+LockFreeQueue::~LockFreeQueue(void)
+{
+    delete [] tag;
 }
 
 

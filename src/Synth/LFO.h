@@ -5,19 +5,10 @@
   Copyright (C) 2002-2005 Nasca Octavian Paul
   Author: Nasca Octavian Paul
 
-  This program is free software; you can redistribute it and/or modify
-  it under the terms of version 2 of the GNU General Public License
-  as published by the Free Software Foundation.
-
-  This program is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU General Public License (version 2 or later) for more details.
-
-  You should have received a copy of the GNU General Public License (version 2)
-  along with this program; if not, write to the Free Software Foundation,
-  Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
-
+  This program is free software; you can redistribute it and/or
+  modify it under the terms of the GNU General Public License
+  as published by the Free Software Foundation; either version 2
+  of the License, or (at your option) any later version.
 */
 
 #ifndef LFO_H
@@ -25,6 +16,7 @@
 
 #include "../globals.h"
 #include "../Misc/Time.h"
+#include "WatchPoint.h"
 
 /**Class for creating Low Frequency Oscillators*/
 class LFO
@@ -35,7 +27,8 @@ class LFO
          * @param lfopars pointer to a LFOParams object
          * @param basefreq base frequency of LFO
          */
-        LFO(const LFOParams &lfopars, float basefreq, const AbsTime &t);
+        LFO(const LFOParams &lfopars, float basefreq, const AbsTime &t, WatchManager *m=0,
+                const char *watch_prefix=0);
         ~LFO();
 
         float lfoout();
@@ -71,6 +64,8 @@ class LFO
         const float     dt_;
         const LFOParams &lfopars_;
         const float basefreq_;
+
+        VecWatchPoint watchOut;
 
         void computeNextFreqRnd(void);
 };

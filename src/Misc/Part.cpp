@@ -5,19 +5,10 @@
   Copyright (C) 2002-2005 Nasca Octavian Paul
   Author: Nasca Octavian Paul
 
-  This program is free software; you can redistribute it and/or modify
-  it under the terms of version 2 of the GNU General Public License
-  as published by the Free Software Foundation.
-
-  This program is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU General Public License (version 2 or later) for more details.
-
-  You should have received a copy of the GNU General Public License (version 2)
-  along with this program; if not, write to the Free Software Foundation,
-  Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
-
+  This program is free software; you can redistribute it and/or
+  modify it under the terms of the GNU General Public License
+  as published by the Free Software Foundation; either version 2
+  of the License, or (at your option) any later version.
 */
 
 #include "Part.h"
@@ -34,6 +25,7 @@
 #include "../Synth/ADnote.h"
 #include "../Synth/SUBnote.h"
 #include "../Synth/PADnote.h"
+#include "../Containers/ScratchString.h"
 #include "../DSP/FFTwrapper.h"
 #include "../Misc/Util.h"
 #include <cstdlib>
@@ -53,10 +45,10 @@ static const Ports partPorts = {
     rRecurs(kit, 16, "Kit"),//NUM_KIT_ITEMS
     rRecursp(partefx, 3, "Part Effect"),
     rRecur(ctl,       "Controller"),
-    rToggle(Penabled, "Part enable"),
+    rToggle(Penabled, rShort("enable"), "Part enable"),
 #undef rChangeCb
 #define rChangeCb obj->setPvolume(obj->Pvolume);
-    rParamZyn(Pvolume, "Part Volume"),
+    rParamZyn(Pvolume, rShort("Vol"), "Part Volume"),
 #undef rChangeCb
 #define rChangeCb obj->setPpanning(obj->Ppanning);
     rParamZyn(Ppanning, "Set Panning"),
@@ -65,10 +57,11 @@ static const Ports partPorts = {
     rParamI(Pkeylimit, rProp(parameter), rMap(min,0), rMap(max, POLYPHONY), "Key limit per part"),
 #undef rChangeCb
 #define rChangeCb
-    rParamZyn(Pminkey, "Min Used Key"),
-    rParamZyn(Pmaxkey, "Max Used Key"),
-    rParamZyn(Pkeyshift, "Part keyshift"),
-    rParamZyn(Prcvchn,  "Active MIDI channel"),
+    rParamZyn(Pminkey, rShort("min"), "Min Used Key"),
+    rParamZyn(Pmaxkey, rShort("max"), "Max Used Key"),
+    rParamZyn(Pkeyshift, rShort("shift"), "Part keyshift"),
+    rParamZyn(Prcvchn, rOptions(ch1, ch2, ch3, ch4, ch5, ch6, ch7, ch8, ch9, ch10, ch11, ch12, ch13, ch14, ch15, ch16),
+                "Active MIDI channel"),
     rParamZyn(Pvelsns,   "Velocity sensing"),
     rParamZyn(Pveloffs,  "Velocity offset"),
     rToggle(Pnoteon,  "If the channel accepts note on events"),
@@ -84,7 +77,7 @@ static const Ports partPorts = {
     rString(info.Pauthor, MAX_INFO_TEXT_SIZE, "Instrument author"),
     rString(info.Pcomments, MAX_INFO_TEXT_SIZE, "Instrument comments"),
     rString(Pname, PART_MAX_NAME_LEN, "User specified label"),
-    rArray(Pefxroute, NUM_PART_EFX,  "Effect Routing"),
+    rArrayI(Pefxroute, NUM_PART_EFX,  "Effect Routing"),
     rArrayT(Pefxbypass, NUM_PART_EFX, "If an effect is bypassed"),
     {"captureMin:", rDoc("Capture minimum valid note"), NULL,
         [](const char *, RtData &r)
@@ -172,7 +165,9 @@ static const Ports kitPorts = {
     rToggle(Padenabled, "ADsynth enable"),
     rToggle(Psubenabled, "SUBsynth enable"),
     rToggle(Ppadenabled, "PADsynth enable"),
-    rParamZyn(Psendtoparteffect, "Effect Levels"),
+    rParamZyn(Psendtoparteffect,
+            rOptions(FX1, FX2, FX3, Off),
+            "Effect Levels"),
     rString(Pname, PART_MAX_NAME_LEN, "Kit User Specified Label"),
     {"captureMin:", rDoc("Capture minimum valid note"), NULL,
         [](const char *, RtData &r)
@@ -204,7 +199,7 @@ const Ports &Part::ports = partPorts;
 
 Part::Part(Allocator &alloc, const SYNTH_T &synth_, const AbsTime &time_,
     const int &gzip_compression, const int &interpolation,
-    Microtonal *microtonal_, FFTwrapper *fft_)
+    Microtonal *microtonal_, FFTwrapper *fft_, WatchManager *wm_, const char *prefix_)
     :Pdrummode(false),
     Ppolymode(true),
     Plegatomode(false),
@@ -213,12 +208,18 @@ Part::Part(Allocator &alloc, const SYNTH_T &synth_, const AbsTime &time_,
     ctl(synth_, &time_),
     microtonal(microtonal_),
     fft(fft_),
+    wm(wm_),
     memory(alloc),
     synth(synth_),
     time(time_),
     gzip_compression(gzip_compression),
     interpolation(interpolation)
 {
+    if(prefix_)
+        strncpy(prefix, prefix_, sizeof(prefix));
+    else
+        memset(prefix, 0, sizeof(prefix));
+
     monomemClear();
 
     for(int n = 0; n < NUM_KIT_ITEMS; ++n) {
@@ -255,6 +256,17 @@ Part::Part(Allocator &alloc, const SYNTH_T &synth_, const AbsTime &time_,
 
     defaults();
     assert(partefx[0]);
+}
+
+Part::Kit::Kit(void)
+    :parent(nullptr),
+     Penabled(false), Pmuted(false),
+     Pminkey(0), Pmaxkey(127),
+     Pname(nullptr),
+     Padenabled(false), Psubenabled(false),
+     Ppadenabled(false), Psendtoparteffect(0),
+     adpars(nullptr), subpars(nullptr), padpars(nullptr)
+{
 }
 
 void Part::cloneTraits(Part &p) const
@@ -312,7 +324,7 @@ void Part::defaultsinstrument()
     Pdrummode = 0;
 
     for(int n = 0; n < NUM_KIT_ITEMS; ++n) {
-        kit[n].Penabled    = false;
+        //kit[n].Penabled    = false;
         kit[n].Pmuted      = false;
         kit[n].Pminkey     = 0;
         kit[n].Pmaxkey     = 127;
@@ -475,8 +487,12 @@ bool Part::NoteOn(unsigned char note,
         return true;
     }
 
+    if(Ppolymode)
+        notePool.makeUnsustainable(note);
+
     //Create New Notes
     for(uint8_t i = 0; i < NUM_KIT_ITEMS; ++i) {
+        ScratchString pre = prefix;
         auto &item = kit[i];
         if(Pkitmode != 0 && !item.validNote(note))
             continue;
@@ -488,13 +504,15 @@ bool Part::NoteOn(unsigned char note,
         try {
             if(item.Padenabled)
                 notePool.insertNote(note, sendto,
-                        {memory.alloc<ADnote>(kit[i].adpars, pars), 0, i});
+                        {memory.alloc<ADnote>(kit[i].adpars, pars,
+                            wm, (pre+"kit"+i+"/adpars/").c_str), 0, i});
             if(item.Psubenabled)
                 notePool.insertNote(note, sendto,
                         {memory.alloc<SUBnote>(kit[i].subpars, pars), 1, i});
             if(item.Ppadenabled)
                 notePool.insertNote(note, sendto,
-                        {memory.alloc<PADnote>(kit[i].padpars, pars, interpolation), 2, i});
+                        {memory.alloc<PADnote>(kit[i].padpars, pars, interpolation, wm,
+                            (pre+"kit"+i+"/padpars/").c_str), 2, i});
         } catch (std::bad_alloc & ba) {
             std::cerr << "dropped new note: " << ba.what() << std::endl;
         }
@@ -522,7 +540,7 @@ void Part::NoteOff(unsigned char note) //release the key
         monomemPop(note);
 
     for(auto &desc:notePool.activeDesc()) {
-        if(desc.note != note || desc.status != KEY_PLAYING)
+        if(desc.note != note || !desc.playing())
             continue;
         if(!ctl.sustain.sustain) { //the sustain pedal is not pushed
             if((isMonoMode() || isLegatoMode()) && !monomemEmpty())
@@ -530,8 +548,12 @@ void Part::NoteOff(unsigned char note) //release the key
             else 
                 notePool.release(desc);
         }
-        else    //the sustain pedal is pushed
-            desc.status = KEY_RELEASED_AND_SUSTAINED;
+        else {   //the sustain pedal is pushed
+            if(desc.canSustain())
+                desc.doSustain();
+            else
+                notePool.release(desc);
+        }
     }
 }
 
@@ -550,7 +572,7 @@ void Part::PolyphonicAftertouch(unsigned char note,
 
     const float vel = getVelocity(velocity, Pvelsns, Pveloffs);
     for(auto &d:notePool.activeDesc()) {
-        if(d.note == note && d.status == KEY_PLAYING)
+        if(d.note == note && d.playing())
             for(auto &s:notePool.activeNotes(d))
                 s.note->setVelocity(vel);
     }
@@ -659,7 +681,7 @@ void Part::ReleaseSustainedKeys()
             MonoMemRenote();  // To play most recent still held note.
 
     for(auto &d:notePool.activeDesc())
-        if(d.status == KEY_RELEASED_AND_SUSTAINED)
+        if(d.sustained())
             for(auto &s:notePool.activeNotes(d))
                 s.note->releasekey();
 }
@@ -671,7 +693,7 @@ void Part::ReleaseSustainedKeys()
 void Part::ReleaseAllKeys()
 {
     for(auto &d:notePool.activeDesc())
-        if(d.status != KEY_RELEASED)
+        if(!d.released())
             for(auto &s:notePool.activeNotes(d))
                 s.note->releasekey();
 }
@@ -726,7 +748,7 @@ void Part::setkeylimit(unsigned char Pkeylimit_)
     if(keylimit == 0)
         keylimit = POLYPHONY - 5;
 
-    if(notePool.getRunningNotes() > keylimit)
+    if(notePool.getRunningNotes() >= keylimit)
         notePool.enforceKeyLimit(keylimit);
 }
 
@@ -840,6 +862,9 @@ void Part::setkititemstatus(unsigned kititem, bool Penabled_)
         delete kkit.adpars;
         delete kkit.subpars;
         delete kkit.padpars;
+        kkit.adpars  = nullptr;
+        kkit.subpars = nullptr;
+        kkit.padpars = nullptr;
         kkit.Pname[0] = '\0';
 
         notePool.killAllNotes();

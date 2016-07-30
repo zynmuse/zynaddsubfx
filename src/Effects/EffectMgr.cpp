@@ -5,19 +5,10 @@
   Copyright (C) 2002-2005 Nasca Octavian Paul
   Author: Nasca Octavian Paul
 
-  This program is free software; you can redistribute it and/or modify
-  it under the terms of version 2 of the GNU General Public License
-  as published by the Free Software Foundation.
-
-  This program is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU General Public License (version 2 or later) for more details.
-
-  You should have received a copy of the GNU General Public License (version 2)
-  along with this program; if not, write to the Free Software Foundation,
-  Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
-
+  This program is free software; you can redistribute it and/or
+  modify it under the terms of the GNU General Public License
+  as published by the Free Software Foundation; either version 2
+  of the License, or (at your option) any later version.
 */
 
 #include <rtosc/ports.h>
@@ -42,10 +33,42 @@
 
 
 #define rObject EffectMgr
+#define rSubtype(name) \
+    {STRINGIFY(name)"/", NULL, &name::ports,\
+        [](const char *msg, rtosc::RtData &data){\
+            rObject &o = *(rObject*)data.obj; \
+            data.obj = o.efx; \
+            SNIP \
+            name::ports.dispatch(msg, data); \
+        }}
 static const rtosc::Ports local_ports = {
     rSelf(EffectMgr),
     rPaste,
     rRecurp(filterpars, "Filter Parameter for Dynamic Filter"),
+    {"Pvolume::i", rProp(parameter) rLinear(0,127) rShort("amt") rDoc("amount of effect"),
+        0,
+        [](const char *msg, rtosc::RtData &d)
+        {
+            EffectMgr *eff = (EffectMgr*)d.obj;
+            if(!rtosc_narguments(msg))
+                d.reply(d.loc, "i", eff->geteffectparrt(0));
+            else if(rtosc_type(msg, 0) == 'i'){
+                eff->seteffectparrt(0, rtosc_argument(msg, 0).i);
+                d.broadcast(d.loc, "i", eff->geteffectparrt(0));
+            }
+        }},
+    {"Ppanning::i", rProp(parameter) rLinear(0,127) rShort("pan") rDoc("panning"),
+        0,
+        [](const char *msg, rtosc::RtData &d)
+        {
+            EffectMgr *eff = (EffectMgr*)d.obj;
+            if(!rtosc_narguments(msg))
+                d.reply(d.loc, "i", eff->geteffectparrt(1));
+            else if(rtosc_type(msg, 0) == 'i'){
+                eff->seteffectparrt(1, rtosc_argument(msg, 0).i);
+                d.broadcast(d.loc, "i", eff->geteffectparrt(1));
+            }
+        }},
     {"parameter#128::i:T:F", rProp(parameter) rProp(alias) rLinear(0,127) rDoc("Parameter Accessor"),
         NULL,
         [](const char *msg, rtosc::RtData &d)
@@ -80,7 +103,7 @@ static const rtosc::Ports local_ports = {
 
                 //update parameters as well
                 strncpy(loc, d.loc, 1024);
-                char *tail = rindex(loc, '/');
+                char *tail = strrchr(loc, '/');
                 if(!tail)
                     return;
                 for(int i=0;i<128;++i) {
@@ -103,7 +126,9 @@ static const rtosc::Ports local_ports = {
             eq->getFilter(a,b);
             d.reply(d.loc, "bb", sizeof(a), a, sizeof(b), b);
         }},
-    {"efftype::i", rProp(parameter) rDoc("Get Effect Type"), NULL,
+    {"efftype::i", rOptions(Disabled, Reverb, Echo, Chorus,
+            Phaser, Alienwah, Distorsion, EQ, DynFilter)
+            rProp(parameter) rDoc("Get Effect Type"), NULL,
         [](const char *m, rtosc::RtData &d)
         {
             EffectMgr *eff  = (EffectMgr*)d.obj;
@@ -130,7 +155,14 @@ static const rtosc::Ports local_ports = {
             //Return the old data for distruction
             d.reply("/free", "sb", "EffectMgr", sizeof(EffectMgr*), &eff_);
         }},
-
+    rSubtype(Alienwah),
+    rSubtype(Chorus),
+    rSubtype(Distorsion),
+    rSubtype(DynamicFilter),
+    rSubtype(Echo),
+    rSubtype(EQ),
+    rSubtype(Phaser),
+    rSubtype(Reverb),
 };
 
 const rtosc::Ports &EffectMgr::ports = local_ports;
@@ -241,6 +273,7 @@ int EffectMgr::geteffect(void)
 // Initialize An Effect in RT context
 void EffectMgr::init(void)
 {
+    kill();
     changeeffectrt(nefx, true);
     changepresetrt(preset, true);
     for(int i=0; i<128; ++i)

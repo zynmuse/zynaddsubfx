@@ -5,19 +5,10 @@
   Copyright (C) 2002-2005 Nasca Octavian Paul
   Author: Nasca Octavian Paul
 
-  This program is free software; you can redistribute it and/or modify
-  it under the terms of version 2 of the GNU General Public License
-  as published by the Free Software Foundation.
-
-  This program is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU General Public License (version 2 or later) for more details.
-
-  You should have received a copy of the GNU General Public License (version 2)
-  along with this program; if not, write to the Free Software Foundation,
-  Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
-
+  This program is free software; you can redistribute it and/or
+  modify it under the terms of the GNU General Public License
+  as published by the Free Software Foundation; either version 2
+  of the License, or (at your option) any later version.
 */
 
 #include "Reverb.h"
@@ -26,6 +17,37 @@
 #include "../DSP/AnalogFilter.h"
 #include "../DSP/Unison.h"
 #include <cmath>
+#include <rtosc/ports.h>
+#include <rtosc/port-sugar.h>
+
+#define rObject Reverb
+#define rBegin [](const char *, rtosc::RtData &) {
+#define rEnd }
+
+rtosc::Ports Reverb::ports = {
+    {"preset::i", rOptions(Cathedral1, Cathedral2, Cathedral3,
+            Hall1, Hall2, Room1, Room2, Basement,
+            Tunnel, Echoed1, Echoed2, VeryLong1, VeryLong2)
+                  rProp(parameter)
+                  rDoc("Instrument Presets"), 0,
+                  rBegin;
+                  rEnd},
+    //Pvolume/Ppanning are common
+    rEffPar(Ptime,    2, rShort("time"),     "Length of Reverb"),
+    rEffPar(Pidelay,  3, rShort("i.time"),   "Delay for first impulse"),
+    rEffPar(Pidelayfb,4, rShort("i.fb"),     "Feedback for first impulse"),
+    rEffPar(Plpf,     7, rShort("lpf"),      "Low pass filter"),
+    rEffPar(Phpf,     8, rShort("lpf"),      "High pass filter"),
+    rEffPar(Plohidamp,9, rShort("damp"),     "Dampening"),
+    //Todo make this a selector
+    rEffPar(Ptype,    10,rShort("type"),
+            rOptions(Random, Freeverb, Bandwidth), "Type"),
+    rEffPar(Proomsize,11,rShort("size"),     "Room Size"),
+    rEffPar(Pbandwidth,12,rShort("bw"),      "Bandwidth"),
+};
+#undef rBegin
+#undef rEnd
+#undef rObject
 
 Reverb::Reverb(EffectParams pars)
     :Effect(pars),

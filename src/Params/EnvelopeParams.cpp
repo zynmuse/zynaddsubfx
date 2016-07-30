@@ -5,19 +5,10 @@
   Copyright (C) 2002-2005 Nasca Octavian Paul
   Author: Nasca Octavian Paul
 
-  This program is free software; you can redistribute it and/or modify
-  it under the terms of version 2 of the GNU General Public License
-  as published by the Free Software Foundation.
-
-  This program is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU General Public License (version 2 or later) for more details.
-
-  You should have received a copy of the GNU General Public License (version 2)
-  along with this program; if not, write to the Free Software Foundation,
-  Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
-
+  This program is free software; you can redistribute it and/or
+  modify it under the terms of the GNU General Public License
+  as published by the Free Software Foundation; either version 2
+  of the License, or (at your option) any later version.
 */
 
 #include <cmath>
@@ -26,12 +17,16 @@
 #include <rtosc/ports.h>
 #include <rtosc/port-sugar.h>
 
+#include "zyn-version.h"
 #include "EnvelopeParams.h"
 #include "../Misc/Util.h"
 #include "../Misc/Time.h"
 
 #define rObject EnvelopeParams
 using namespace rtosc;
+#define rBegin [](const char *msg, RtData &d) { \
+    EnvelopeParams *env = (rObject*) d.obj
+#define rEnd }
 
 static const rtosc::Ports localPorts = {
     rSelf(EnvelopeParams),
@@ -41,60 +36,85 @@ static const rtosc::Ports localPorts = {
         obj->last_update_timestamp = obj->time->time(); }
     rToggle(Pfreemode, "Complex Envelope Definitions"),
 #undef  rChangeCb
-#define rChangeCb if (obj->time) { obj->last_update_timestamp = obj->time->time(); }
+#define rChangeCb if(!obj->Pfreemode) obj->converttofree(); \
+                  if(obj->time) { obj->last_update_timestamp = obj->time->time(); }
     rParamZyn(Penvpoints, rProp(internal), "Number of points in complex definition"),
     rParamZyn(Penvsustain, rProp(internal), "Location of the sustain point"),
     rParams(Penvdt,  MAX_ENVELOPE_POINTS, "Envelope Delay Times"),
     rParams(Penvval, MAX_ENVELOPE_POINTS, "Envelope Values"),
-    rParamZyn(Penvstretch, "Stretch with respect to frequency"),
-    rToggle(Pforcedrelease, "Force Envelope to fully evaluate"),
-    rToggle(Plinearenvelope, "Linear or Logarithmic Envelopes"),
-    rParamZyn(PA_dt,  "Attack Time"),
-    rParamZyn(PA_val, "Attack Value"),
-    rParamZyn(PD_dt,  "Decay Time"),
-    rParamZyn(PD_val, "Decay Value"),
-    rParamZyn(PS_val, "Sustain Value"),
-    rParamZyn(PR_dt,  "Release Time"),
-    rParamZyn(PR_val, "Release Value"),
+    rParamZyn(Penvstretch,  rShort("stretch"),
+            "Stretch with respect to frequency"),
+    rToggle(Pforcedrelease, rShort("frcr"),
+            "Force Envelope to fully evaluate"),
+    rToggle(Plinearenvelope, rShort("lin/log"),
+            "Linear or Logarithmic Envelopes"),
+    rParamZyn(PA_dt,  rShort("a.dt"),  "Attack Time"),
+    rParamZyn(PA_val, rShort("a.val"), "Attack Value"),
+    rParamZyn(PD_dt,  rShort("d.dt"),  "Decay Time"),
+    rParamZyn(PD_val, rShort("d.val"), "Decay Value"),
+    rParamZyn(PS_val, rShort("s.val"), "Sustain Value"),
+    rParamZyn(PR_dt,  rShort("r.dt"),  "Release Time"),
+    rParamZyn(PR_val, rShort("r.val"), "Release Value"),
+    
+    {"envdt:", rDoc("Envelope Delay Times"), NULL,
+        rBegin;
+        const int N = MAX_ENVELOPE_POINTS;
+        rtosc_arg_t args[N];
+        char arg_types[N+1] = {0};
+        for(int i=0; i<N; ++i) {
+            args[i].f    = env->getdt(i);
+            arg_types[i] = 'f';
+        }
+        d.replyArray(d.loc, arg_types, args);
+        rEnd},
+    {"envval:", rDoc("Envelope Delay Times"), NULL,
+        rBegin;
+        const int N = MAX_ENVELOPE_POINTS;
+        rtosc_arg_t args[N];
+        char arg_types[N+1] = {0};
+        for(int i=0; i<N; ++i) {
+            args[i].f    = env->Penvval[i]/127.0f;
+            arg_types[i] = 'f';
+        }
+        d.replyArray(d.loc, arg_types, args);
+        rEnd},
 
-    {"addPoint:i", rProp(internal) rDoc("Add point to envelope"), NULL, [](const char *msg, RtData &d)
-        {
-            EnvelopeParams *env = (rObject*) d.obj;
-            const int curpoint = rtosc_argument(msg, 0).i;
-            //int curpoint=freeedit->lastpoint;
-            if (curpoint<0 || curpoint>env->Penvpoints || env->Penvpoints>=MAX_ENVELOPE_POINTS)
-                return;
+    {"addPoint:i", rProp(internal) rDoc("Add point to envelope"), NULL,
+        rBegin;
+        const int curpoint = rtosc_argument(msg, 0).i;
+        //int curpoint=freeedit->lastpoint;
+        if (curpoint<0 || curpoint>env->Penvpoints || env->Penvpoints>=MAX_ENVELOPE_POINTS)
+            return;
 
-            for (int i=env->Penvpoints; i>=curpoint+1; i--) {
-                env->Penvdt[i]=env->Penvdt[i-1];
-                env->Penvval[i]=env->Penvval[i-1];
-            }
+        for (int i=env->Penvpoints; i>=curpoint+1; i--) {
+            env->Penvdt[i]=env->Penvdt[i-1];
+            env->Penvval[i]=env->Penvval[i-1];
+        }
 
-            if (curpoint==0) {
-                env->Penvdt[1]=64;
-            }
+        if (curpoint==0)
+            env->Penvdt[1]=64;
 
-            env->Penvpoints++;
-            if (curpoint<=env->Penvsustain) env->Penvsustain++;
-        }},
-    {"delPoint:i", rProp(internal) rDoc("Delete Envelope Point"), NULL, [](const char *msg, RtData &d)
-        {
-            EnvelopeParams *env = (rObject*) d.obj;
-            const int curpoint=rtosc_argument(msg, 0).i;
-            if(curpoint<1 || curpoint>=env->Penvpoints-1 || env->Penvpoints<=3)
-                return;
+        env->Penvpoints++;
+        if (curpoint<=env->Penvsustain)
+            env->Penvsustain++;
+        rEnd},
+    {"delPoint:i", rProp(internal) rDoc("Delete Envelope Point"), NULL,
+        rBegin;
+        const int curpoint=rtosc_argument(msg, 0).i;
+        if(curpoint<1 || curpoint>=env->Penvpoints-1 || env->Penvpoints<=3)
+            return;
 
-            for (int i=curpoint+1;i<env->Penvpoints;i++){
-                env->Penvdt[i-1]=env->Penvdt[i];
-                env->Penvval[i-1]=env->Penvval[i];
-            };
+        for (int i=curpoint+1;i<env->Penvpoints;i++){
+            env->Penvdt[i-1]=env->Penvdt[i];
+            env->Penvval[i-1]=env->Penvval[i];
+        };
 
-            env->Penvpoints--;
+        env->Penvpoints--;
 
-            if (curpoint<=env->Penvsustain)
-                env->Penvsustain--;
+        if (curpoint<=env->Penvsustain)
+            env->Penvsustain--;
 
-        }},
+        rEnd},
 };
 #undef  rChangeCb
 
@@ -339,7 +359,42 @@ void EnvelopeParams::add2XML(XMLwrapper& xml)
         }
 }
 
+float EnvelopeParams::env_dB2rap(float db) {
+    return (powf(10.0f, db / 20.0f) - 0.01)/.99f;
+}
 
+float EnvelopeParams::env_rap2dB(float rap) {
+    return 20.0f * log10f(rap * 0.99f + 0.01);
+}
+
+/**
+    since commit 5334d94283a513ae42e472aa020db571a3589fb9, i.e. between
+    versions 2.4.3 and 2.4.4, the amplitude envelope has been converted
+    differently from dB to rap for AmplitudeEnvelope (mode 2)
+    this converts the values read from an XML file once
+*/
+struct version_fixer_t
+{
+    const bool mismatch;
+public:
+    int operator()(int input) const
+    {
+        return (mismatch)
+            // The errors occured when calling env_dB2rap. Let f be the
+            // conversion function for mode 2 (see Envelope.cpp), then we
+            // load values with (let "o" be the function composition symbol):
+            //   f^{-1} o (env_dB2rap^{-1}) o dB2rap o f
+            // from the xml file. This results in the following formula:
+            ? roundf(127.0f * (0.5f *
+			       log10f( 0.01f + 0.99f *
+                                       powf(100, input/127.0f - 1))
+                               + 1))
+            : input;
+    }
+    version_fixer_t(const version_type& fileversion, int env_mode) :
+        mismatch(fileversion < version_type(2,4,4) &&
+                 (env_mode == 2)) {}
+};
 
 void EnvelopeParams::getfromXML(XMLwrapper& xml)
 {
@@ -350,20 +405,22 @@ void EnvelopeParams::getfromXML(XMLwrapper& xml)
     Pforcedrelease  = xml.getparbool("forced_release", Pforcedrelease);
     Plinearenvelope = xml.getparbool("linear_envelope", Plinearenvelope);
 
+    version_fixer_t version_fix(xml.fileversion(), Envmode);
+
     PA_dt  = xml.getpar127("A_dt", PA_dt);
     PD_dt  = xml.getpar127("D_dt", PD_dt);
     PR_dt  = xml.getpar127("R_dt", PR_dt);
-    PA_val = xml.getpar127("A_val", PA_val);
-    PD_val = xml.getpar127("D_val", PD_val);
-    PS_val = xml.getpar127("S_val", PS_val);
-    PR_val = xml.getpar127("R_val", PR_val);
+    PA_val = version_fix(xml.getpar127("A_val", PA_val));
+    PD_val = version_fix(xml.getpar127("D_val", PD_val));
+    PS_val = version_fix(xml.getpar127("S_val", PS_val));
+    PR_val = version_fix(xml.getpar127("R_val", PR_val));
 
     for(int i = 0; i < Penvpoints; ++i) {
         if(xml.enterbranch("POINT", i) == 0)
             continue;
         if(i != 0)
             Penvdt[i] = xml.getpar127("dt", Penvdt[i]);
-        Penvval[i] = xml.getpar127("val", Penvval[i]);
+        Penvval[i] = version_fix(xml.getpar127("val", Penvval[i]));
         xml.exitbranch();
     }
 

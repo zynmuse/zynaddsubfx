@@ -1,24 +1,17 @@
 /*
   ZynAddSubFX - a software synthesizer
+
   AlsaEngine.cpp - ALSA Driver
+  Copyright (C) 2009 Alan Calvert
+  Copyright (C) 2014 Mark McCurry
 
-  Copyright 2009, Alan Calvert
-            2014, Mark McCurry
-
-  This program is free software; you can redistribute it and/or modify
-  it under the terms of version 2 of the GNU General Public License
-  as published by the Free Software Foundation.
-
-  This program is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU General Public License (version 2 or later) for more details.
-
-  You should have received a copy of the GNU General Public License (version 2)
-  along with this program; if not, write to the Free Software Foundation,
-  Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
+  This program is free software; you can redistribute it and/or
+  modify it under the terms of the GNU General Public License
+  as published by the Free Software Foundation; either version 2
+  of the License, or (at your option) any later version.
 */
 
+#include <stdlib.h>
 #include <iostream>
 #include <cmath>
 
@@ -28,6 +21,8 @@ using namespace std;
 #include "../Misc/Config.h"
 #include "InMgr.h"
 #include "AlsaEngine.h"
+#include "Compressor.h"
+#include "Nio.h"
 
 AlsaEngine::AlsaEngine(const SYNTH_T &synth)
     :AudioOut(synth)
@@ -35,6 +30,7 @@ AlsaEngine::AlsaEngine(const SYNTH_T &synth)
     audio.buffer = new short[synth.buffersize * 2];
     name = "ALSA";
     audio.handle = NULL;
+    audio.peaks[0] = 0;
 
     midi.handle  = NULL;
     midi.alsaId  = -1;
@@ -212,7 +208,13 @@ bool AlsaEngine::openMidi()
     if(snd_seq_open(&midi.handle, "default", SND_SEQ_OPEN_INPUT, 0) != 0)
         return false;
 
-    snd_seq_set_client_name(midi.handle, "ZynAddSubFX");
+    string clientname = "ZynAddSubFX";
+    string postfix = Nio::getPostfix();
+    if (!postfix.empty())
+        clientname += "_" + postfix;
+    if(Nio::pidInClientName)
+        clientname += "_" + os_pid_as_padded_string();
+    snd_seq_set_client_name(midi.handle, clientname.c_str());
 
     alsaport = snd_seq_create_simple_port(
         midi.handle,
@@ -252,9 +254,13 @@ short *AlsaEngine::interleave(const Stereo<float *> &smps)
     int    idx = 0; //possible off by one error here
     double scaled;
     for(int frame = 0; frame < bufferSize; ++frame) { // with a nod to libsamplerate ...
-        scaled = smps.l[frame] * (8.0f * 0x10000000);
+        float l = smps.l[frame];
+        float r = smps.r[frame];
+        stereoCompressor(synth.samplerate, audio.peaks[0], l, r);
+
+        scaled = l * (8.0f * 0x10000000);
         shortInterleaved[idx++] = (short int)(lrint(scaled) >> 16);
-        scaled = smps.r[frame] * (8.0f * 0x10000000);
+        scaled = r * (8.0f * 0x10000000);
         shortInterleaved[idx++] = (short int)(lrint(scaled) >> 16);
     }
     return shortInterleaved;
@@ -268,7 +274,12 @@ bool AlsaEngine::openAudio()
     int rc = 0;
     /* Open PCM device for playback. */
     audio.handle = NULL;
-    rc = snd_pcm_open(&audio.handle, "hw:0",
+
+    const char *device = getenv("ALSA_DEVICE");
+    if(device == 0)
+        device = "hw:0";
+
+    rc = snd_pcm_open(&audio.handle, device,
                       SND_PCM_STREAM_PLAYBACK, 0);
     if(rc < 0) {
         fprintf(stderr,

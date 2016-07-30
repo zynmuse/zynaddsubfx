@@ -5,19 +5,10 @@
   Copyright (C) 2002 Nasca Octavian Paul
   Author: Nasca Octavian Paul
 
-  This program is free software; you can redistribute it and/or modify
-  it under the terms of version 2 of the GNU General Public License
-  as published by the Free Software Foundation.
-
-  This program is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU General Public License (version 2 or later) for more details.
-
-  You should have received a copy of the GNU General Public License (version 2)
-  along with this program; if not, write to the Free Software Foundation,
-  Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
-
+  This program is free software; you can redistribute it and/or
+  modify it under the terms of the GNU General Public License
+  as published by the Free Software Foundation; either version 2
+  of the License, or (at your option) any later version.
 */
 
 /*
@@ -612,7 +603,7 @@ DSSIaudiooutput *DSSIaudiooutput::getInstance(LADSPA_Handle instance)
  * @param sampleRate [in] the sample rate to be used by the synth.
  * @return
  */
-DSSIaudiooutput::DSSIaudiooutput(unsigned long sampleRate) : dssi_control({dssi_control_description[0],
+DSSIaudiooutput::DSSIaudiooutput(unsigned long sampleRate) : dssi_control{dssi_control_description[0],
                                                                            dssi_control_description[1],
                                                                            dssi_control_description[2],
                                                                            dssi_control_description[3],
@@ -623,7 +614,7 @@ DSSIaudiooutput::DSSIaudiooutput(unsigned long sampleRate) : dssi_control({dssi_
                                                                            dssi_control_description[8],
                                                                            dssi_control_description[9],
                                                                            dssi_control_description[10],
-                                                                           dssi_control_description[11]})
+                                                                           dssi_control_description[11]}
 {
     SYNTH_T synth;
     synth.samplerate = sampleRate;

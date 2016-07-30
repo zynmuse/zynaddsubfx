@@ -5,19 +5,10 @@
   Copyright (C) 2013-2013 Mark McCurry
   Authors: Mark McCurry
 
-  This program is free software; you can redistribute it and/or modify
-  it under the terms of version 2 of the GNU General Public License
-  as published by the Free Software Foundation.
-
-  This program is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU General Public License (version 2 or later) for more details.
-
-  You should have received a copy of the GNU General Public License (version 2)
-  along with this program; if not, write to the Free Software Foundation,
-  Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
-
+  This program is free software; you can redistribute it and/or
+  modify it under the terms of the GNU General Public License
+  as published by the Free Software Foundation; either version 2
+  of the License, or (at your option) any later version.
 */
 #include <cxxtest/TestSuite.h>
 #include <cmath>
@@ -94,17 +85,17 @@ class MessageTest:public CxxTest::TestSuite
             ms->applyOscEvent(ms->uToB->read());
             TS_ASSERT(!ms->uToB->hasNext());
 
-	    auto &osc_src = *ms->part[0]->kit[0].adpars->VoicePar[0].FMSmp;
+            auto &osc_src = *ms->part[0]->kit[0].adpars->VoicePar[0].FMSmp;
             auto &osc_dst = *ms->part[0]->kit[0].padpars->oscilgen;
             auto &osc_oth = *ms->part[0]->kit[0].adpars->VoicePar[1].OscilSmp;
 
-	    TS_ASSERT_EQUALS(osc_src.Pbasefuncpar, 64);
+            TS_ASSERT_EQUALS(osc_src.Pbasefuncpar, 64);
             osc_src.Pbasefuncpar = 32;
-	    TS_ASSERT_EQUALS(osc_src.Pbasefuncpar, 32);
+            TS_ASSERT_EQUALS(osc_src.Pbasefuncpar, 32);
 
             //Copy From ADsynth modulator
             printf("====Copy From ADsynth modulator\n");
-	    start_realtime();
+            start_realtime();
             mw->transmitMsg("/presets/copy", "s", "/part0/kit0/adpars/VoicePar0/FMSmp/");
 
             TS_ASSERT_EQUALS(osc_dst.Pbasefuncpar, 64);
@@ -114,10 +105,10 @@ class MessageTest:public CxxTest::TestSuite
             printf("====Paste to PADsynth\n");
             mw->transmitMsg("/presets/paste", "s", "/part0/kit0/padpars/oscilgen/");
 
-	    printf("====Paste to ADsynth\n");
+            printf("====Paste to ADsynth\n");
             mw->transmitMsg("/presets/paste", "s", "/part0/kit0/adpars/VoicePar1/OscilSmp/");
 
-	    stop_realtime();
+            stop_realtime();
             TS_ASSERT_EQUALS(osc_dst.Pbasefuncpar, 32);
             TS_ASSERT_EQUALS(osc_oth.Pbasefuncpar, 32);
         }

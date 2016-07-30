@@ -5,26 +5,44 @@
   Copyright (C) 2002-2005 Nasca Octavian Paul
   Author: Nasca Octavian Paul
 
-  This program is free software; you can redistribute it and/or modify
-  it under the terms of version 2 of the GNU General Public License
-  as published by the Free Software Foundation.
-
-  This program is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU General Public License (version 2 or later) for more details.
-
-  You should have received a copy of the GNU General Public License (version 2)
-  along with this program; if not, write to the Free Software Foundation,
-  Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
-
+  This program is free software; you can redistribute it and/or
+  modify it under the terms of the GNU General Public License
+  as published by the Free Software Foundation; either version 2
+  of the License, or (at your option) any later version.
 */
 
 #include <cmath>
+#include <rtosc/port-sugar.h>
+#include <rtosc/ports.h>
 #include "../Misc/Allocator.h"
 #include "Alienwah.h"
 
 using std::complex;
+
+#define rObject Alienwah
+#define rBegin [](const char *, rtosc::RtData &) {
+#define rEnd }
+
+rtosc::Ports Alienwah::ports = {
+    {"preset::i", rOptions(Alienwah 1, Alienwah 2, Alienwah 3, Alienwah 4)
+                  rDoc("Instrument Presets"), 0,
+                  rBegin;
+                  rEnd},
+    //Pvolume/Ppanning are common
+    rEffPar(Pfreq,     2, rShort("freq"), "Effect Frequency"),
+    rEffPar(Pfreqrnd,  3, rShort("rand"), "Frequency Randomness"),
+    rEffPar(PLFOtype,  4, rShort("shape"),
+            rOptions(sine, triangle), "LFO Shape"),
+    rEffParTF(PStereo, 5, rShort("stereo"), "Stereo/Mono Mode"),
+    rEffPar(Pdepth,    6, rShort("depth"), "LFO Depth"),
+    rEffPar(Pfeedback, 7, rShort("fb"), "Feedback"),
+    rEffPar(Pdelay,    8, rShort("delay"), "Delay"),
+    rEffPar(Plrcross,  9, rShort("l/r"), "Left/Right Crossover"),
+    rEffPar(Pphase,   10, rShort("phase"), "Phase"),
+};
+#undef rBegin
+#undef rEnd
+#undef rObject
 
 Alienwah::Alienwah(EffectParams pars)
     :Effect(pars),

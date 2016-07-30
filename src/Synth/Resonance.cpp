@@ -5,18 +5,10 @@
   Copyright (C) 2002-2005 Nasca Octavian Paul
   Author: Nasca Octavian Paul
 
-  This program is free software; you can redistribute it and/or modify
-  it under the terms of version 2 of the GNU General Public License
-  as published by the Free Software Foundation.
-
-  This program is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU General Public License (version 2 or later) for more details.
-
-  You should have received a copy of the GNU General Public License (version 2)
-  along with this program; if not, write to the Free Software Foundation,
-  Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
+  This program is free software; you can redistribute it and/or
+  modify it under the terms of the GNU General Public License
+  as published by the Free Software Foundation; either version 2
+  of the License, or (at your option) any later version.
 */
 
 #include <cmath>
@@ -28,17 +20,19 @@
 #include <rtosc/port-sugar.h>
 
 #define rObject Resonance
+#define rBegin [](const char *msg, RtData &d) { rObject &o = *(rObject*)d.obj
 
+#define rEnd }
 using namespace rtosc;
 const rtosc::Ports Resonance::ports = {
     rSelf(Resonance),
     rPaste,
-    rToggle(Penabled, "resonance enable"),
-    rToggle(Pprotectthefundamental, "Disable resonance filter on first harmonic"),
+    rToggle(Penabled,      rShort("enable"), "resonance enable"),
+    rToggle(Pprotectthefundamental, rShort("p.fund."), "Disable resonance filter on first harmonic"),
     rParams(Prespoints, N_RES_POINTS, "Resonance data points"),
-    rParamZyn(PmaxdB, "how many dB the signal may be amplified"),
-    rParamZyn(Pcenterfreq, "Center frequency"),
-    rParamZyn(Poctavesfreq, "The number of octaves..."),
+    rParamZyn(PmaxdB,      rShort("max"),  "how many dB the signal may be amplified"),
+    rParamZyn(Pcenterfreq, rShort("c.freq"), "Center frequency"),
+    rParamZyn(Poctavesfreq, rShort("oct"), "The number of octaves..."),
     rActioni(randomize, rMap(min,0), rMap(max, 2), "Randomize frequency response"),
     rActioni(interpolatepeaks, rMap(min,0), rMap(max, 2), "Generate response from peak values"),
     rAction(smooth, "Smooth out frequency response"),
@@ -50,7 +44,29 @@ const rtosc::Ports Resonance::ports = {
     {"octavesfreq:", rDoc("Get center freq of graph"), NULL,
             [](const char *, RtData &d)
         {d.reply(d.loc, "f", ((rObject*)d.obj)->getoctavesfreq());}},
+    {"respoints", 0, 0,
+        rBegin;
+        if(rtosc_narguments(msg)) {
+            int i=0;
+            auto itr = rtosc_itr_begin(msg);
+            while(!rtosc_itr_end(itr) && i < N_RES_POINTS) {
+                auto ival = rtosc_itr_next(&itr);
+                if(ival.type == 'f')
+                    o.Prespoints[i++] = ival.val.f*127;
+            }
+        } else {
+            rtosc_arg_t args[N_RES_POINTS];
+            char        types[N_RES_POINTS+1] = {0};
+            for(int i=0; i<N_RES_POINTS; ++i) {
+                args[i].f = o.Prespoints[i]/127.0;
+                types[i]  = 'f';
+            }
+            d.replyArray(d.loc, types, args);
+        }
+        rEnd},
 };
+#undef rBegin
+#undef rEnd
 
 Resonance::Resonance():Presets()
 {

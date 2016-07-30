@@ -5,25 +5,17 @@
   Copyright (C) 2002-2005 Nasca Octavian Paul
   Author: Nasca Octavian Paul
 
-  This program is free software; you can redistribute it and/or modify
-  it under the terms of version 2 of the GNU General Public License
-  as published by the Free Software Foundation.
-
-  This program is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU General Public License (version 2 or later) for more details.
-
-  You should have received a copy of the GNU General Public License (version 2)
-  along with this program; if not, write to the Free Software Foundation,
-  Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
-
+  This program is free software; you can redistribute it and/or
+  modify it under the terms of the GNU General Public License
+  as published by the Free Software Foundation; either version 2
+  of the License, or (at your option) any later version.
 */
 
 #ifndef ENVELOPE_H
 #define ENVELOPE_H
 
 #include "../globals.h"
+#include "WatchPoint.h"
 
 /**Implementation of a general Envelope*/
 class Envelope
@@ -31,18 +23,19 @@ class Envelope
     public:
 
         /**Constructor*/
-        Envelope(class EnvelopeParams &pars, float basefreq, float dt);
+        Envelope(class EnvelopeParams &pars, float basefreq, float dt, WatchManager *m=0,
+                const char *watch_prefix=0);
         /**Destructor*/
-        ~Envelope();
-        void releasekey();
-        float envout();
-        float envout_dB();
+        ~Envelope(void);
+        void releasekey(void);
+        /**Push Envelope to finishing state*/
+        void forceFinish(void);
+        float envout(bool doWatch=true);
+        float envout_dB(void);
         /**Determines the status of the Envelope
          * @return returns 1 if the envelope is finished*/
-        bool finished() const;
+        bool finished(void) const;
     private:
-        float env_rap2dB(float rap);
-        float env_dB2rap(float db);
         int   envpoints;
         int   envsustain;    //"-1" means disabled
         float envdt[MAX_ENVELOPE_POINTS]; //millisecons
@@ -51,12 +44,14 @@ class Envelope
         int   linearenvelope;
 
         int   currentpoint;    //current envelope point (starts from 1)
-        int   forcedrelease;
+        bool  forcedrelease;
         bool  keyreleased;    //if the key was released
         bool  envfinish;
         float t; // the time from the last point
         float inct; // the time increment
         float envoutval; //used to do the forced release
+
+        VecWatchPoint watchOut;
 };
 
 

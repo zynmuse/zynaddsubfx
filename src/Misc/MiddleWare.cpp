@@ -1,3 +1,14 @@
+/*
+  ZynAddSubFX - a software synthesizer
+
+  MiddleWare.cpp - Glue Logic And Home Of Non-RT Operations
+  Copyright (C) 2016 Mark McCurry
+
+  This program is free software; you can redistribute it and/or
+  modify it under the terms of the GNU General Public License
+  as published by the Free Software Foundation; either version 2
+  of the License, or (at your option) any later version.
+*/
 #include "MiddleWare.h"
 
 #include <cstring>
@@ -5,6 +16,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
+#include <dirent.h>
 
 #include <rtosc/undo-history.h>
 #include <rtosc/thread-link.h>
@@ -19,6 +31,7 @@
 #include <map>
 
 #include "Util.h"
+#include "CallbackRepeater.h"
 #include "Master.h"
 #include "Part.h"
 #include "PresetExtractor.h"
@@ -36,6 +49,8 @@
 #include <atomic>
 #include <list>
 
+#define errx(...)
+#define warnx(...)
 #ifndef errx
 #include <err.h>
 #endif
@@ -60,8 +75,8 @@ void path_search(const char *m, const char *url)
     using rtosc::Port;
 
     //assumed upper bound of 32 ports (may need to be resized)
-    char         types[129];
-    rtosc_arg_t  args[128];
+    char         types[256+1];
+    rtosc_arg_t  args[256];
     size_t       pos    = 0;
     const Ports *ports  = NULL;
     const char  *str    = rtosc_argument(m,0).s;
@@ -82,7 +97,7 @@ void path_search(const char *m, const char *url)
     if(ports) {
         //RTness not confirmed here
         for(const Port &p:*ports) {
-            if(strstr(p.name, needle)!=p.name)
+            if(strstr(p.name, needle) != p.name || !p.name)
                 continue;
             types[pos]    = 's';
             args[pos++].s = p.name;
@@ -107,6 +122,8 @@ void path_search(const char *m, const char *url)
         lo_address addr = lo_address_new_from_url(url);
         if(addr)
             lo_send_message(addr, buffer, msg);
+        lo_address_free(addr);
+        lo_message_free(msg);
     }
 }
 
@@ -124,7 +141,7 @@ static int handler_function(const char *path, const char *types, lo_arg **argv,
             mw->transmitMsg("/echo", "ss", "OSC_URL", tmp);
             mw->activeUrl(tmp);
         }
-
+        free((void*)tmp);
     }
 
     char buffer[2048];
@@ -133,7 +150,7 @@ static int handler_function(const char *path, const char *types, lo_arg **argv,
     lo_message_serialise(msg, path, buffer, &size);
     if(!strcmp(buffer, "/path-search") && !strcmp("ss", rtosc_argument_string(buffer))) {
         path_search(buffer, mw->activeUrl().c_str());
-    } else if(buffer[0]=='/' && rindex(buffer, '/')[1]) {
+    } else if(buffer[0]=='/' && strrchr(buffer, '/')[1]) {
         mw->transmitMsg(rtosc::Ports::collapsePath(buffer));
     }
 
@@ -141,6 +158,16 @@ static int handler_function(const char *path, const char *types, lo_arg **argv,
 }
 
 typedef void(*cb_t)(void*,const char*);
+
+//utility method (should be moved to a better location)
+template <class T, class V>
+std::vector<T> keys(const std::map<T,V> &m)
+{
+    std::vector<T> vec;
+    for(auto &kv: m)
+        vec.push_back(kv.first);
+    return vec;
+}
 
 
 /*****************************************************************************
@@ -155,6 +182,12 @@ void deallocate(const char *str, void *v)
         delete (Master*)v;
     else if(!strcmp(str, "fft_t"))
         delete[] (fft_t*)v;
+    else if(!strcmp(str, "KbmInfo"))
+        delete (KbmInfo*)v;
+    else if(!strcmp(str, "SclInfo"))
+        delete (SclInfo*)v;
+    else if(!strcmp(str, "Microtonal"))
+        delete (Microtonal*)v;
     else
         fprintf(stderr, "Unknown type '%s', leaking pointer %p!!\n", str, v);
 }
@@ -330,7 +363,8 @@ struct NonRtObjStore
             d.matches++;
             d.reply((obj_rl+"needPrepare").c_str(), "F");
         } else {
-            assert(pad);
+            if(!pad)
+                return;
             strcpy(d.loc, obj_rl.c_str());
             d.obj = pad;
             PADnoteParameters::non_realtime_ports.dispatch(msg, d);
@@ -421,19 +455,6 @@ class MiddleWareImpl
     MiddleWare *parent;
     private:
 
-    //Detect if the name of the process is 'zynaddsubfx'
-    bool isPlugin() const
-    {
-        std::string proc_file = "/proc/" + to_s(getpid()) + "/comm";
-        std::ifstream ifs(proc_file);
-        if(ifs.good()) {
-            std::string comm_name;
-            ifs >> comm_name;
-            return comm_name != "zynaddsubfx";
-        }
-        return true;
-    }
-
 public:
     Config* const config;
     MiddleWareImpl(MiddleWare *mw, SYNTH_T synth, Config* config,
@@ -470,14 +491,15 @@ public:
         assert(actual_load[npart] <= pending_load[npart]);
 
         //load part in async fashion when possible
-#if HAVE_ASYNC
+#if 0
         auto alloc = std::async(std::launch::async,
                 [master,filename,this,npart](){
                 Part *p = new Part(*master->memory, synth,
                                    master->time,
                                    config->cfg.GzipCompression,
                                    config->cfg.Interpolation,
-                                   &master->microtonal, master->fft);
+                                   &master->microtonal, master->fft, &master->watcher,
+                                   ("/part"+to_s(npart)+"/").c_str());
                 if(p->loadXMLinstrument(filename))
                     fprintf(stderr, "Warning: failed to load part<%s>!\n", filename);
 
@@ -567,6 +589,48 @@ public:
         parent->transmitMsg("/load-master", "b", sizeof(Master*), &m);
     }
 
+    void loadXsz(const char *filename, rtosc::RtData &d)
+    {
+        Microtonal *micro = new Microtonal(master->gzip_compression);
+        int err = micro->loadXML(filename);
+        if(err) {
+            d.reply("/alert", "s", "Error: Could not load the xsz file.");
+            delete micro;
+        } else
+            d.chain("/microtonal/paste", "b", sizeof(void*), &micro);
+    }
+
+    void saveXsz(const char *filename, rtosc::RtData &d)
+    {
+        int err = 0;
+        doReadOnlyOp([this,filename,&err](){
+                err = master->microtonal.saveXML(filename);});
+        if(err)
+            d.reply("/alert", "s", "Error: Could not save the xsz file.");
+    }
+
+    void loadScl(const char *filename, rtosc::RtData &d)
+    {
+        SclInfo *scl = new SclInfo;
+        int err=Microtonal::loadscl(*scl, filename);
+        if(err) {
+            d.reply("/alert", "s", "Error: Could not load the scl file.");
+            delete scl;
+        } else
+            d.chain("/microtonal/paste_scl", "b", sizeof(void*), &scl);
+    }
+
+    void loadKbm(const char *filename, rtosc::RtData &d)
+    {
+        KbmInfo *kbm = new KbmInfo;
+        int err=Microtonal::loadkbm(*kbm, filename);
+        if(err) {
+            d.reply("/alert", "s", "Error: Could not load the kbm file.");
+            delete kbm;
+        } else
+            d.chain("/microtonal/paste_kbm", "b", sizeof(void*), &kbm);
+    }
+
     void updateResources(Master *m)
     {
         obj_store.clear();
@@ -589,14 +653,18 @@ public:
     {
         if(server)
             while(lo_server_recv_noblock(server, 0));
+
         while(bToU->hasNext()) {
             const char *rtmsg = bToU->read();
             bToUhandle(rtmsg);
         }
+
         while(auto *m = multi_thread_source.read()) {
             handleMsg(m->memory);
             multi_thread_source.free(m);
         }
+
+        autoSave.tick();
     }
 
 
@@ -609,6 +677,11 @@ public:
     void write(const char *path, const char *args, ...);
     void write(const char *path, const char *args, va_list va);
 
+    void currentUrl(string addr)
+    {
+        curr_url = addr;
+        known_remotes.insert(addr);
+    }
 
     // Send a message to a remote client
     void sendToRemote(const char *msg, std::string dest);
@@ -667,11 +740,14 @@ public:
     //LIBLO
     lo_server server;
     string last_url, curr_url;
+    std::set<string> known_remotes;
 
     //Synthesis Rate Parameters
     const SYNTH_T synth;
 
     PresetsStore presetsstore;
+
+    CallbackRepeater autoSave;
 };
 
 /*****************************************************************************
@@ -695,6 +771,7 @@ class MwDataObj:public rtosc::RtData
 
         ~MwDataObj(void)
         {
+            delete[] loc;
             delete[] buffer;
         }
 
@@ -717,6 +794,17 @@ class MwDataObj:public rtosc::RtData
                 reply(buffer);
             }
             va_end(va);
+        }
+        virtual void replyArray(const char *path, const char *args, rtosc_arg_t *argd) override
+        {
+            //printf("reply building '%s'\n", path);
+            if(!strcmp(path, "/forward")) { //forward the information to the backend
+                args++;
+                rtosc_amessage(buffer,4*4096,path,args,argd);
+            } else {
+                rtosc_amessage(buffer,4*4096,path,args,argd);
+                reply(buffer);
+            }
         }
         virtual void reply(const char *msg){
             mwi->sendToCurrentRemote(msg);
@@ -752,6 +840,24 @@ class MwDataObj:public rtosc::RtData
         MiddleWareImpl   *mwi;
 };
 
+static std::vector<std::string> getFiles(const char *folder, int mask)
+{
+    DIR *dir = opendir(folder);
+
+    if(dir == NULL) {
+        return {};
+    }
+
+    struct dirent *fn;
+    std::vector<string> files;
+
+    while((fn = readdir(dir)))
+        if(fn->d_type == mask)
+            files.push_back(fn->d_name);
+
+    closedir(dir);
+    return files;
+}
 
 
 
@@ -786,7 +892,8 @@ using rtosc::RtData;
  * - Load Bank                                                               *
  * - Refresh List of Banks                                                   *
  *****************************************************************************/
-rtosc::Ports bankPorts = {
+extern const rtosc::Ports bankPorts;
+const rtosc::Ports bankPorts = {
     {"rescan:", 0, 0,
         rBegin;
         impl.rescanforbanks();
@@ -796,6 +903,67 @@ rtosc::Ports bankPorts = {
             d.reply("/bank/bank_select", "iss", i++, elm.name.c_str(), elm.dir.c_str());
         d.reply("/bank/bank_select", "i", impl.bankpos);
 
+        rEnd},
+    {"bank_list:", 0, 0,
+        rBegin;
+#define MAX_BANKS 256
+        char        types[MAX_BANKS*2+1]={0};
+        rtosc_arg_t args[MAX_BANKS*2];
+        int i = 0;
+        for(auto &elm : impl.banks) {
+            types[i] = types [i + 1] = 's';
+            args[i++].s = elm.name.c_str();
+            args[i++].s = elm.dir.c_str();
+        }
+        d.replyArray("/bank/bank_list", types, args);
+#undef MAX_BANKS
+        rEnd},
+    {"types:", 0, 0,
+        rBegin;
+        const char *types[17];
+        types[ 0] = "None";
+        types[ 1] = "Piano";
+        types[ 2] = "Chromatic Percussion";
+        types[ 3] = "Organ";
+        types[ 4] = "Guitar";
+        types[ 5] = "Bass";
+        types[ 6] = "Solo Strings";
+        types[ 7] = "Ensemble";
+        types[ 8] = "Brass";
+        types[ 9] = "Reed";
+        types[10] = "Pipe";
+        types[11] = "Synth Lead";
+        types[12] = "Synth Pad";
+        types[13] = "Synth Effects";
+        types[14] = "Ethnic";
+        types[15] = "Percussive";
+        types[16] = "Sound Effects";
+        char        t[17+1]={0};
+        rtosc_arg_t args[17];
+        for(int i=0; i<17; ++i) {
+            t[i]      = 's';
+            args[i].s = types[i];
+        }
+        d.replyArray("/bank/types", t, args);
+        rEnd},
+    {"tags:", 0, 0,
+        rBegin;
+        const char *types[8];
+        types[ 0] = "fast";
+        types[ 1] = "slow";
+        types[ 2] = "saw";
+        types[ 3] = "bell";
+        types[ 4] = "lead";
+        types[ 5] = "ambient";
+        types[ 6] = "horn";
+        types[ 7] = "alarm";
+        char        t[8+1]={0};
+        rtosc_arg_t args[8];
+        for(int i=0; i<8; ++i) {
+            t[i]      = 's';
+            args[i].s = types[i];
+        }
+        d.replyArray(d.loc, t, args);
         rEnd},
     {"slot#1024:", 0, 0,
         rBegin;
@@ -858,13 +1026,38 @@ rtosc::Ports bankPorts = {
             d.reply("/alert", "s",
                     "Failed To Clear Bank Slot, please check file permissions");
         rEnd},
-    {"msb:i", 0, 0,
+    {"msb::i", 0, 0,
         rBegin;
-        impl.setMsb(rtosc_argument(msg, 0).i);
+        if(rtosc_narguments(msg))
+            impl.setMsb(rtosc_argument(msg, 0).i);
+        else
+            d.reply(d.loc, "i", impl.bank_msb);
         rEnd},
-    {"lsb:i", 0, 0,
+    {"lsb::i", 0, 0,
         rBegin;
-        impl.setLsb(rtosc_argument(msg, 0).i);
+        if(rtosc_narguments(msg))
+            impl.setLsb(rtosc_argument(msg, 0).i);
+        else
+            d.reply(d.loc, "i", impl.bank_lsb);
+        rEnd},
+    {"newbank:s", 0, 0,
+        rBegin;
+        int err = impl.newbank(rtosc_argument(msg, 0).s);
+        if(err)
+            d.reply("/alert", "s", "Error: Could not make a new bank (directory)..");
+        rEnd},
+    {"search:s", 0, 0,
+        rBegin;
+        auto res = impl.search(rtosc_argument(msg, 0).s);
+#define MAX_SEARCH 300
+        char res_type[MAX_SEARCH+1] = {0};
+        rtosc_arg_t res_dat[MAX_SEARCH] = {0};
+        for(unsigned i=0; i<res.size() && i<MAX_SEARCH; ++i) {
+            res_type[i]  = 's';
+            res_dat[i].s = res[i].c_str();
+        }
+        d.replyArray("/bank/search_results", res_type, res_dat);
+#undef MAX_SEARCH
         rEnd},
 };
 
@@ -964,6 +1157,31 @@ static rtosc::Ports middwareSnoopPorts = {
         xml.loadXMLfile(file);
         loadMidiLearn(xml, impl.midi_mapper);
         rEnd},
+    {"clear_xlz:", 0, 0,
+        rBegin;
+        impl.midi_mapper.clear();
+        rEnd},
+    //scale file stuff
+    {"load_xsz:s", 0, 0,
+        rBegin;
+        const char *file = rtosc_argument(msg, 0).s;
+        impl.loadXsz(file, d);
+        rEnd},
+    {"save_xsz:s", 0, 0,
+        rBegin;
+        const char *file = rtosc_argument(msg, 0).s;
+        impl.saveXsz(file, d);
+        rEnd},
+    {"load_scl:s", 0, 0,
+        rBegin;
+        const char *file = rtosc_argument(msg, 0).s;
+        impl.loadScl(file, d);
+        rEnd},
+    {"load_kbm:s", 0, 0,
+        rBegin;
+        const char *file = rtosc_argument(msg, 0).s;
+        impl.loadKbm(file, d);
+        rEnd},
     {"save_xmz:s", 0, 0,
         rBegin;
         const char *file = rtosc_argument(msg, 0).s;
@@ -977,6 +1195,67 @@ static rtosc::Ports middwareSnoopPorts = {
         const int   part_id = rtosc_argument(msg,0).i;
         const char *file    = rtosc_argument(msg,1).s;
         impl.savePart(part_id, file);
+        rEnd},
+    {"file_home_dir:", 0, 0,
+        rBegin;
+        d.reply(d.loc, "s", getenv("HOME"));
+        rEnd},
+    {"file_list_files:s", 0, 0,
+        rBegin;
+        const char *folder = rtosc_argument(msg, 0).s;
+
+        auto files = getFiles(folder, DT_REG);
+
+        const int N = files.size();
+        rtosc_arg_t *args  = new rtosc_arg_t[N];
+        char        *types = new char[N+1];
+        types[N] = 0;
+        for(int i=0; i<N; ++i) {
+            args[i].s = files[i].c_str();
+            types[i]  = 's';
+        }
+
+        d.replyArray(d.loc, types, args);
+        delete [] types;
+        delete [] args;
+        rEnd},
+    {"file_list_dirs:s", 0, 0,
+        rBegin;
+        const char *folder = rtosc_argument(msg, 0).s;
+
+        auto files = getFiles(folder, DT_DIR);
+
+        const int N = files.size();
+        rtosc_arg_t *args  = new rtosc_arg_t[N];
+        char        *types = new char[N+1];
+        types[N] = 0;
+        for(int i=0; i<N; ++i) {
+            args[i].s = files[i].c_str();
+            types[i]  = 's';
+        }
+
+        d.replyArray(d.loc, types, args);
+        delete [] types;
+        delete [] args;
+        rEnd},
+    {"reload_auto_save:i", 0, 0,
+        rBegin
+        const int save_id      = rtosc_argument(msg,0).i;
+        const string save_dir  = string(getenv("HOME")) + "/.local";
+        const string save_file = "zynaddsubfx-"+to_s(save_id)+"-autosave.xmz";
+        const string save_loc  = save_dir + "/" + save_file;
+        impl.loadMaster(save_loc.c_str());
+        //XXX it would be better to remove the autosave after there is a new
+        //autosave, but this method should work for non-immediate crashes :-|
+        remove(save_loc.c_str());
+        rEnd},
+    {"delete_auto_save:i", 0, 0,
+        rBegin
+        const int save_id      = rtosc_argument(msg,0).i;
+        const string save_dir  = string(getenv("HOME")) + "/.local";
+        const string save_file = "zynaddsubfx-"+to_s(save_id)+"-autosave.xmz";
+        const string save_loc  = save_dir + "/" + save_file;
+        remove(save_loc.c_str());
         rEnd},
     {"load_xmz:s", 0, 0,
         rBegin;
@@ -1033,6 +1312,30 @@ static rtosc::Ports middwareSnoopPorts = {
         rBegin;
         impl.undo.seekHistory(+1);
         rEnd},
+    //port to observe the midi mappings
+    {"midi-learn-values:", 0, 0,
+        rBegin;
+        auto &midi  = impl.midi_mapper;
+        auto  key   = keys(midi.inv_map);
+        //cc-id, path, min, max
+#define MAX_MIDI 32
+        rtosc_arg_t args[MAX_MIDI*4];
+        char        argt[MAX_MIDI*4+1] = {0};
+        for(unsigned i=0; i<key.size() && i<MAX_MIDI; ++i) {
+            auto val = midi.inv_map[key[i]];
+            argt[4*i+0]   = 'i';
+            args[4*i+0].i = std::get<1>(val);
+            argt[4*i+1]   = 's';
+            args[4*i+1].s = key[i].c_str();
+            argt[4*i+2]   = 'i';
+            args[4*i+2].i = 0;
+            argt[4*i+3]   = 'i';
+            args[4*i+3].i = 127;
+
+        }
+        d.replyArray(d.loc, argt, args);
+#undef  MAX_MIDI
+        rEnd},
     {"learn:s", 0, 0,
         rBegin;
         string addr = rtosc_argument(msg, 0).s;
@@ -1042,6 +1345,14 @@ static rtosc::Ports middwareSnoopPorts = {
             midi.map(addr.c_str(), false);
         else
             midi.map(addr.c_str(), true);
+        rEnd},
+    {"unlearn:s", 0, 0,
+        rBegin;
+        string addr = rtosc_argument(msg, 0).s;
+        auto &midi  = impl.midi_mapper;
+        auto map    = midi.getMidiMappingStrings();
+        midi.unMap(addr.c_str(), false);
+        midi.unMap(addr.c_str(), true);
         rEnd},
     //drop this message into the abyss
     {"ui/title:", 0, 0, [](const char *msg, RtData &d) {}}
@@ -1053,7 +1364,7 @@ static rtosc::Ports middlewareReplyPorts = {
         const char *type = rtosc_argument(msg, 0).s;
         const char *url  = rtosc_argument(msg, 1).s;
         if(!strcmp(type, "OSC_URL"))
-            impl.curr_url = url;
+            impl.currentUrl(url);
         rEnd},
     {"free:sb", 0, 0,
         rBegin;
@@ -1105,7 +1416,14 @@ static rtosc::Ports middlewareReplyPorts = {
 MiddleWareImpl::MiddleWareImpl(MiddleWare *mw, SYNTH_T synth_,
     Config* config, int preferrred_port)
     :parent(mw), config(config), ui(nullptr), synth(std::move(synth_)),
-    presetsstore(*config)
+    presetsstore(*config), autoSave(-1, [this]() {
+            auto master = this->master;
+            this->doReadOnlyOp([master](){
+                std::string home = getenv("HOME");
+                std::string save_file = home+"/.local/zynaddsubfx-"+to_s(getpid())+"-autosave.xmz";
+                printf("doing an autosave <%s>...\n", save_file.c_str());
+                int res = master->saveXML(save_file.c_str());
+                (void)res;});})
 {
     bToU = new rtosc::ThreadLink(4096*2,1024);
     uToB = new rtosc::ThreadLink(4096*2,1024);
@@ -1233,14 +1551,20 @@ void MiddleWareImpl::broadcastToRemote(const char *rtmsg)
     sendToRemote(rtmsg, "GUI");
 
     //Send to remote UI if there's one listening
-    if(curr_url != "GUI")
-        sendToRemote(rtmsg, curr_url);
+    for(auto rem:known_remotes)
+        if(rem != "GUI")
+            sendToRemote(rtmsg, rem);
 
     broadcast = false;
 }
 
 void MiddleWareImpl::sendToRemote(const char *rtmsg, std::string dest)
 {
+    if(!rtmsg || rtmsg[0] != '/' || !rtosc_message_length(rtmsg, -1)) {
+        printf("[Warning] Invalid message in sendToRemote <%s>...\n", rtmsg);
+        return;
+    }
+
     //printf("sendToRemote(%s:%s,%s)\n", rtmsg, rtosc_argument_string(rtmsg),
     //        dest.c_str());
     if(dest == "GUI") {
@@ -1253,6 +1577,8 @@ void MiddleWareImpl::sendToRemote(const char *rtmsg, std::string dest)
         lo_address addr = lo_address_new_from_url(dest.c_str());
         if(addr)
             lo_send_message(addr, rtmsg, msg);
+        lo_address_free(addr);
+        lo_message_free(msg);
     }
 }
 
@@ -1364,7 +1690,7 @@ void MiddleWareImpl::kitEnable(int part, int kit, int type)
 void MiddleWareImpl::handleMsg(const char *msg)
 {
     //Check for known bugs
-    assert(msg && *msg && rindex(msg, '/')[1]);
+    assert(msg && *msg && strrchr(msg, '/')[1]);
     assert(strstr(msg,"free") == NULL || strstr(rtosc_argument_string(msg), "b") == NULL);
     assert(strcmp(msg, "/part0/Psysefxvol"));
     assert(strcmp(msg, "/Penabled"));
@@ -1379,7 +1705,7 @@ void MiddleWareImpl::handleMsg(const char *msg)
         fprintf(stdout, "%c[%d;%d;%dm", 0x1B, 0, 7 + 30, 0 + 40);
     }
 
-    const char *last_path = rindex(msg, '/');
+    const char *last_path = strrchr(msg, '/');
     if(!last_path) {
         printf("Bad message in handleMsg() <%s>\n", msg);
         assert(false);
@@ -1430,24 +1756,86 @@ MiddleWare::MiddleWare(SYNTH_T synth, Config* config,
                        int preferred_port)
 :impl(new MiddleWareImpl(this, std::move(synth), config, preferred_port))
 {}
+
 MiddleWare::~MiddleWare(void)
 {
     delete impl;
 }
+
 void MiddleWare::updateResources(Master *m)
 {
     impl->updateResources(m);
 }
+
 Master *MiddleWare::spawnMaster(void)
 {
     assert(impl->master);
     assert(impl->master->uToB);
     return impl->master;
 }
+
+void MiddleWare::enableAutoSave(int interval_sec)
+{
+    impl->autoSave.dt = interval_sec;
+}
+
+int MiddleWare::checkAutoSave(void)
+{
+    //save spec zynaddsubfx-PID-autosave.xmz
+    const std::string home     = getenv("HOME");
+    const std::string save_dir = home+"/.local/";
+
+    DIR *dir = opendir(save_dir.c_str());
+
+    if(dir == NULL)
+        return -1;
+
+    struct dirent *fn;
+    int    reload_save = -1;
+
+    while((fn = readdir(dir))) {
+        const char *filename = fn->d_name;
+        const char *prefix = "zynaddsubfx-";
+
+        //check for manditory prefix
+        if(strstr(filename, prefix) != filename)
+            continue;
+
+        int id = atoi(filename+strlen(prefix));
+
+        bool in_use = false;
+
+        std::string proc_file = "/proc/" + to_s(id) + "/comm";
+        std::ifstream ifs(proc_file);
+        if(ifs.good()) {
+            std::string comm_name;
+            ifs >> comm_name;
+            in_use = (comm_name == "zynaddsubfx");
+        }
+
+        if(!in_use) {
+            reload_save = id;
+            break;
+        }
+    }
+
+    closedir(dir);
+
+    return reload_save;
+}
+
+void MiddleWare::removeAutoSave(void)
+{
+    std::string home = getenv("HOME");
+    std::string save_file = home+"/.local/zynaddsubfx-"+to_s(getpid())+"-autosave.xmz";
+    remove(save_file.c_str());
+}
+
 Fl_Osc_Interface *MiddleWare::spawnUiApi(void)
 {
     return impl->osc;
 }
+
 void MiddleWare::tick(void)
 {
     impl->tick();

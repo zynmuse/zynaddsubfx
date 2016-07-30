@@ -7,19 +7,10 @@
   Author: Nasca Octavian Paul
           Mark McCurry
 
-  This program is free software; you can redistribute it and/or modify
-  it under the terms of version 2 of the GNU General Public License
-  as published by the Free Software Foundation.
-
-  This program is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU General Public License (version 2 or later) for more details.
-
-  You should have received a copy of the GNU General Public License (version 2)
-  along with this program; if not, write to the Free Software Foundation,
-  Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
-
+  This program is free software; you can redistribute it and/or
+  modify it under the terms of the GNU General Public License
+  as published by the Free Software Foundation; either version 2
+  of the License, or (at your option) any later version.
 */
 
 #include "XMLwrapper.h"
@@ -96,10 +87,6 @@ const char *mxmlElementGetAttr(const mxml_node_t *node, const char *name)
 
 XMLwrapper::XMLwrapper()
 {
-    version.Major    = 2;
-    version.Minor    = 5;
-    version.Revision = 2;
-
     minimal = true;
 
     node = tree = mxmlNewElement(MXML_NO_PARENT,
@@ -115,11 +102,11 @@ XMLwrapper::XMLwrapper()
 
     node = root = addparams("ZynAddSubFX-data", 4,
                             "version-major", stringFrom<int>(
-                                version.Major).c_str(),
+                                version.major()).c_str(),
                             "version-minor", stringFrom<int>(
-                                version.Minor).c_str(),
+                                version.minor()).c_str(),
                             "version-revision",
-                            stringFrom<int>(version.Revision).c_str(),
+                            stringFrom<int>(version.revision()).c_str(),
                             "ZynAddSubFX-author", "Nasca Octavian Paul");
 
     //make the empty branch that will contain the information parameters
@@ -336,14 +323,13 @@ int XMLwrapper::loadXMLfile(const string &filename)
         return -3;  //the XML doesnt embbed zynaddsubfx data
 
     //fetch version information
-    version.Major    = stringTo<int>(mxmlElementGetAttr(root, "version-major"));
-    version.Minor    = stringTo<int>(mxmlElementGetAttr(root, "version-minor"));
-    version.Revision =
-        stringTo<int>(mxmlElementGetAttr(root, "version-revision"));
+    _fileversion.set_major(stringTo<int>(mxmlElementGetAttr(root, "version-major")));
+    _fileversion.set_minor(stringTo<int>(mxmlElementGetAttr(root, "version-minor")));
+    _fileversion.set_revision(
+        stringTo<int>(mxmlElementGetAttr(root, "version-revision")));
 
     if(verbose)
-        cout << "loadXMLfile() version: " << version.Major << '.'
-             << version.Minor << '.' << version.Revision << endl;
+        cout << "loadXMLfile() version: " << _fileversion << endl;
 
     return 0;
 }

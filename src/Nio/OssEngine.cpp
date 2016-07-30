@@ -5,22 +5,15 @@
   Copyright (C) 2002-2005 Nasca Octavian Paul
   Author: Nasca Octavian Paul
 
-  This program is free software; you can redistribute it and/or modify
-  it under the terms of version 2 of the GNU General Public License
-  as published by the Free Software Foundation.
-
-  This program is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU General Public License (version 2 or later) for more details.
-
-  You should have received a copy of the GNU General Public License (version 2)
-  along with this program; if not, write to the Free Software Foundation,
-  Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
-
+  This program is free software; you can redistribute it and/or
+  modify it under the terms of the GNU General Public License
+  as published by the Free Software Foundation; either version 2
+  of the License, or (at your option) any later version.
 */
 
 #include "OssEngine.h"
+#include "Compressor.h"
+
 #include "../Misc/Util.h"
 #include "../Misc/Config.h"
 #include "../globals.h"
@@ -195,6 +188,8 @@ OssEngine::OssEngine(const SYNTH_T &synth,
     audio.smps.ps32 = new int[synth.buffersize * 2];
     memset(audio.smps.ps32, 0, sizeof(int) * synth.buffersize * 2);
     memset(&midi.state, 0, sizeof(midi.state));
+
+    audio.peaks[0] = 0;
 }
 
 OssEngine::~OssEngine()
@@ -410,21 +405,10 @@ void *OssEngine::audioThreadCb()
     while(getAudioEn()) {
         const Stereo<float *> smps = getNext();
 
-        float l, r;
         for(int i = 0; i < synth.buffersize; ++i) {
-            l = smps.l[i];
-            r = smps.r[i];
-
-            if(l < -1.0f)
-                l = -1.0f;
-            else
-                if(l > 1.0f)
-                    l = 1.0f;
-            if(r < -1.0f)
-                r = -1.0f;
-            else
-                if(r > 1.0f)
-                    r = 1.0f;
+            float l = smps.l[i];
+            float r = smps.r[i];
+            stereoCompressor(synth.samplerate, audio.peaks[0], l, r);
 
             if (audio.is32bit) {
                 audio.smps.ps32[i * 2]     = (int) (l * 2147483647.0f);

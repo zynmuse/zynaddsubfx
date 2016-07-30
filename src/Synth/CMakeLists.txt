@@ -3,9 +3,11 @@ set(zynaddsubfx_synth_SRCS
 	Synth/ADnote.cpp
 	Synth/Envelope.cpp
 	Synth/LFO.cpp
+    Synth/ModFilter.cpp
 	Synth/OscilGen.cpp
 	Synth/PADnote.cpp
 	Synth/Resonance.cpp
 	Synth/SUBnote.cpp
+    Synth/WatchPoint.cpp
 	PARENT_SCOPE
 )

@@ -7,19 +7,10 @@
   Author: Nasca Octavian Paul
           Mark McCurry
 
-  This program is free software; you can redistribute it and/or modify
-  it under the terms of version 2 of the GNU General Public License
-  as published by the Free Software Foundation.
-
-  This program is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU General Public License (version 2 or later) for more details.
-
-  You should have received a copy of the GNU General Public License (version 2)
-  along with this program; if not, write to the Free Software Foundation,
-  Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
-
+  This program is free software; you can redistribute it and/or
+  modify it under the terms of the GNU General Public License
+  as published by the Free Software Foundation; either version 2
+  of the License, or (at your option) any later version.
 */
 
 #include "Bank.h"
@@ -38,6 +29,7 @@
 #include "Config.h"
 #include "Util.h"
 #include "Part.h"
+#include "BankDb.h"
 
 #define INSTRUMENT_EXTENSION ".xiz"
 
@@ -48,7 +40,7 @@ using namespace std;
 
 Bank::Bank(Config *config)
     :bankpos(0), defaultinsname(" "), config(config),
-     bank_msb(0), bank_lsb(0)
+    db(new BankDb), bank_msb(0), bank_lsb(0)
 {
     clearbank();
     bankfiletitle = dirname;
@@ -66,6 +58,7 @@ Bank::Bank(Config *config)
 Bank::~Bank()
 {
     clearbank();
+    delete db;
 }
 
 /*
@@ -188,7 +181,8 @@ int Bank::savetoslot(unsigned int ninstrument, Part *part)
     err = part->saveXML(filename.c_str());
     if(err)
         return err;
-    addtobank(ninstrument, legalizeFilename(tmpfilename) + ".xiz", (char *) part->Pname);
+    addtobank(ninstrument, legalizeFilename(tmpfilename) + ".xiz",
+              (char *) part->Pname);
     return 0;
 }
 
@@ -212,6 +206,7 @@ int Bank::loadfromslot(unsigned int ninstrument, Part *part)
  */
 int Bank::loadbank(string bankdirname)
 {
+    normalizedirsuffix(bankdirname);
     DIR *dir = opendir(bankdirname.c_str());
     clearbank();
 
@@ -285,9 +280,8 @@ int Bank::newbank(string newbankdirname)
     string bankdir;
     bankdir = config->cfg.bankRootDirList[0];
 
-    if(((bankdir[bankdir.size() - 1]) != '/')
-       && ((bankdir[bankdir.size() - 1]) != '\\'))
-        bankdir += "/";
+    expanddirname(bankdir);
+    normalizedirsuffix(bankdir);
 
     bankdir += newbankdirname;
 #ifdef _WIN32
@@ -359,6 +353,7 @@ bool Bank::bankstruct::operator<(const bankstruct &b) const
 
 void Bank::rescanforbanks()
 {
+    db->clear();
     //remove old banks
     banks.clear();
 
@@ -370,21 +365,23 @@ void Bank::rescanforbanks()
     sort(banks.begin(), banks.end());
 
     //remove duplicate bank names
-    int dupl = 0;
-    for(int j = 0; j < (int) banks.size() - 1; ++j)
+    for(int j = 0; j < (int) banks.size() - 1; ++j) {
+        db->addBankDir(banks[j].dir);
+        int dupl = 0;
         for(int i = j + 1; i < (int) banks.size(); ++i) {
             if(banks[i].name == banks[j].name) {
                 //add a [1] to the first bankname and [n] to others
                 banks[i].name = banks[i].name + '['
                                 + stringFrom(dupl + 2) + ']';
-                if(dupl == 0)
-                    banks[j].name += "[1]";
-
                 dupl++;
             }
-            else
-                dupl = 0;
         }
+        if(dupl != 0)
+            banks[j].name += "[1]";
+        if(dupl)
+            j += dupl;
+    }
+    db->scanBanks();
 }
 
 void Bank::setMsb(uint8_t msb)
@@ -404,6 +401,8 @@ void Bank::setLsb(uint8_t lsb)
 
 void Bank::scanrootdir(string rootdir)
 {
+    expanddirname(rootdir);
+
     DIR *dir = opendir(rootdir.c_str());
     if(dir == NULL)
         return;
@@ -460,6 +459,17 @@ void Bank::clearbank()
     dirname.clear();
 }
 
+std::vector<std::string> Bank::search(std::string s) const
+{
+    std::vector<std::string> out;
+    auto vec = db->search(s);
+    for(auto e:vec) {
+        out.push_back(e.name);
+        out.push_back(e.bank+e.file);
+    }
+    return out;
+}
+
 int Bank::addtobank(int pos, string filename, string name)
 {
     if((pos >= 0) && (pos < BANK_SIZE)) {
@@ -498,3 +508,23 @@ void Bank::deletefrombank(int pos)
 Bank::ins_t::ins_t()
     :name(""), filename("")
 {}
+
+void Bank::expanddirname(std::string &dirname) {
+    if (dirname.empty())
+        return;
+
+    // if the directory name starts with a ~ and the $HOME variable is
+    // defined in the environment, replace ~ by the content of $HOME
+    if (dirname.at(0) == '~') {
+        char *home_dirname = getenv("HOME");
+        if (home_dirname != NULL) {
+            dirname = std::string(home_dirname) + dirname.substr(1);
+        }
+    }
+}
+
+void Bank::normalizedirsuffix(string &dirname) const {
+    if(((dirname[dirname.size() - 1]) != '/')
+       && ((dirname[dirname.size() - 1]) != '\\'))
+        dirname += "/";
+}

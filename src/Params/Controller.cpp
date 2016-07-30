@@ -5,19 +5,10 @@
   Copyright (C) 2002-2005 Nasca Octavian Paul
   Author: Nasca Octavian Paul
 
-  This program is free software; you can redistribute it and/or modify
-  it under the terms of version 2 of the GNU General Public License
-  as published by the Free Software Foundation.
-
-  This program is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU General Public License (version 2 or later) for more details.
-
-  You should have received a copy of the GNU General Public License (version 2)
-  along with this program; if not, write to the Free Software Foundation,
-  Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
-
+  This program is free software; you can redistribute it and/or
+  modify it under the terms of the GNU General Public License
+  as published by the Free Software Foundation; either version 2
+  of the License, or (at your option) any later version.
 */
 
 #include "Controller.h"
@@ -36,31 +27,31 @@ using namespace rtosc;
 #undef rChangeCb
 #define rChangeCb if (obj->time) { obj->last_update_timestamp = obj->time->time(); }
 const rtosc::Ports Controller::ports = {
-    rParamZyn(panning.depth, "Depth of Panning MIDI Control"),
-    rParamZyn(filtercutoff.depth, "Depth of Filter Cutoff MIDI Control"),
-    rParamZyn(filterq.depth, "Depth of Filter Q MIDI Control"),
-    rParamZyn(bandwidth.depth, "Depth of Bandwidth MIDI Control"),
-    rToggle(bandwidth.exponential, "Bandwidth Exponential Mode"),
-    rParamZyn(modwheel.depth, "Depth of Modwheel MIDI Control"),
-    rToggle(modwheel.exponential, "Modwheel Exponential Mode"),
-    rToggle(pitchwheel.is_split, "If PitchWheel Has unified bendrange or not"),
+    rParamZyn(panning.depth,       rShort("pan.d"), "Depth of Panning MIDI Control"),
+    rParamZyn(filtercutoff.depth,  rShort("fc.d"), "Depth of Filter Cutoff MIDI Control"),
+    rParamZyn(filterq.depth,       rShort("fq.d"), "Depth of Filter Q MIDI Control"),
+    rParamZyn(bandwidth.depth,     rShort("bw.d"), "Depth of Bandwidth MIDI Control"),
+    rToggle(bandwidth.exponential, rShort("bw.exp"), "Bandwidth Exponential Mode"),
+    rParamZyn(modwheel.depth,      rShort("mdw.d"), "Depth of Modwheel MIDI Control"),
+    rToggle(modwheel.exponential,  rShort("mdw.exp"), "Modwheel Exponential Mode"),
+    rToggle(pitchwheel.is_split,   "If PitchWheel Has unified bendrange or not"),
     rParamI(pitchwheel.bendrange, "Range of MIDI Pitch Wheel"),
     rParamI(pitchwheel.bendrange_down, "Lower Range of MIDI Pitch Wheel"),
-    rToggle(expression.receive, "Expression MIDI Receive"),
-    rToggle(fmamp.receive,      "FM amplitude MIDI Receive"),
-    rToggle(volume.receive,     "Volume MIDI Receive"),
-    rToggle(sustain.receive,    "Sustain MIDI Receive"),
-    rToggle(portamento.receive, "Portamento MIDI Receive"),
+    rToggle(expression.receive, rShort("exp.rcv"), "Expression MIDI Receive"),
+    rToggle(fmamp.receive,      rShort("fma.rcv"), "FM amplitude MIDI Receive"),
+    rToggle(volume.receive,     rShort("vol.rcv"), "Volume MIDI Receive"),
+    rToggle(sustain.receive,    rShort("sus.rcv"), "Sustain MIDI Receive"),
+    rToggle(portamento.receive, rShort("prt.rcv"), "Portamento MIDI Receive"),
     rToggle(portamento.portamento, "UNDOCUMENTED"),
-    rParamZyn(portamento.time, "Portamento Length"),
-    rToggle(portamento.proportional, "If all portamentos are proportional to the distance they span"),
-    rParamZyn(portamento.propRate, "Portamento proportional rate"),
-    rParamZyn(portamento.propDepth, "Portamento proportional depth"),
-    rParamZyn(portamento.pitchthresh, "Threshold for portamento"),
-    rToggle(portamento.pitchthreshtype, "Type of threshold"),
+    rParamZyn(portamento.time,          rShort("time"), "Portamento Length"),
+    rToggle(portamento.proportional,    rShort("propt."), "If all portamentos are proportional to the distance they span"),
+    rParamZyn(portamento.propRate,      rShort("rate"), "Portamento proportional rate"),
+    rParamZyn(portamento.propDepth,     rShort("depth"), "Portamento proportional depth"),
+    rParamZyn(portamento.pitchthresh,   rShort("thresh"), "Threshold for portamento"),
+    rToggle(portamento.pitchthreshtype, rShort("tr.type"), "Type of threshold"),
     rParamZyn(portamento.updowntimestretch, "UNDOCUMENTED"),
-    rParamZyn(resonancecenter.depth, "Resonance Center MIDI Depth"),
-    rParamZyn(resonancebandwidth.depth, "Resonance Bandwidth MIDI Depth"),
+    rParamZyn(resonancecenter.depth,    rShort("rfc.d"), "Resonance Center MIDI Depth"),
+    rParamZyn(resonancebandwidth.depth, rShort("rbw.d"), "Resonance Bandwidth MIDI Depth"),
     rToggle(NRPN.receive, "NRPN MIDI Enable"),
     rAction(defaults),
 };

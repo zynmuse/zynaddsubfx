@@ -5,26 +5,19 @@
   Copyright (C) 2002-2005 Nasca Octavian Paul
   Author: Nasca Octavian Paul
 
-  This program is free software; you can redistribute it and/or modify
-  it under the terms of version 2 of the GNU General Public License
-  as published by the Free Software Foundation.
-
-  This program is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU General Public License (version 2 or later) for more details.
-
-  You should have received a copy of the GNU General Public License (version 2)
-  along with this program; if not, write to the Free Software Foundation,
-  Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
-
+  This program is free software; you can redistribute it and/or
+  modify it under the terms of the GNU General Public License
+  as published by the Free Software Foundation; either version 2
+  of the License, or (at your option) any later version.
 */
 
 #include <cmath>
 #include "Envelope.h"
 #include "../Params/EnvelopeParams.h"
 
-Envelope::Envelope(EnvelopeParams &pars, float basefreq, float bufferdt)
+Envelope::Envelope(EnvelopeParams &pars, float basefreq, float bufferdt,
+        WatchManager *m, const char *watch_prefix)
+    :watchOut(m, watch_prefix, "out")
 {
     envpoints = pars.Penvpoints;
     if(envpoints > MAX_ENVELOPE_POINTS)
@@ -97,27 +90,40 @@ void Envelope::releasekey()
     if(keyreleased)
         return;
     keyreleased = true;
-    if(forcedrelease != 0)
+    if(forcedrelease)
         t = 0.0f;
+}
+
+void Envelope::forceFinish(void)
+{
+    envfinish = true;
 }
 
 /*
  * Envelope Output
  */
-float Envelope::envout()
+float Envelope::envout(bool doWatch)
 {
     float out;
 
     if(envfinish) { //if the envelope is finished
         envoutval = envval[envpoints - 1];
+        if(doWatch) {
+            float pos[2] = {(float)envpoints - 1, envoutval};
+            watchOut(pos, 2);
+        }
         return envoutval;
     }
     if((currentpoint == envsustain + 1) && !keyreleased) { //if it is sustaining now
         envoutval = envval[envsustain];
+        if(doWatch) {
+            float pos[2] = {(float)envsustain, envoutval};
+            watchOut(pos, 2);
+        }
         return envoutval;
     }
 
-    if(keyreleased && (forcedrelease != 0)) { //do the forced release
+    if(keyreleased && forcedrelease) { //do the forced release
         int tmp = (envsustain < 0) ? (envpoints - 1) : (envsustain + 1); //if there is no sustain point, use the last point for release
 
         if(envdt[tmp] < 0.00000001f)
@@ -134,6 +140,12 @@ float Envelope::envout()
             if((currentpoint >= envpoints) || (envsustain < 0))
                 envfinish = true;
         }
+
+        if(doWatch) {
+            float pos[2] = {(float)tmp + t, envoutval};
+            watchOut(pos, 2);
+        }
+
         return out;
     }
     if(inct >= 1.0f)
@@ -153,15 +165,12 @@ float Envelope::envout()
     }
 
     envoutval = out;
+
+    if(doWatch) {
+        float pos[2] = {(float)currentpoint + t, envoutval};
+        watchOut(pos, 2);
+    }
     return out;
-}
-
-inline float Envelope::env_dB2rap(float db) {
-    return (powf(10.0f, db / 20.0f) - 0.01)/.99f;
-}
-
-inline float Envelope::env_rap2dB(float rap) {
-    return 20.0f * log10f(rap * 0.99f + 0.01);
 }
 
 /*
@@ -170,12 +179,12 @@ inline float Envelope::env_rap2dB(float rap) {
 float Envelope::envout_dB()
 {
     float out;
-    if(linearenvelope != 0)
-        return envout();
+    if(linearenvelope)
+        return envout(true);
 
-    if((currentpoint == 1) && (!keyreleased || (forcedrelease == 0))) { //first point is always lineary interpolated
-        float v1 = env_dB2rap(envval[0]);
-        float v2 = env_dB2rap(envval[1]);
+    if((currentpoint == 1) && (!keyreleased || !forcedrelease)) { //first point is always lineary interpolated
+        float v1 = EnvelopeParams::env_dB2rap(envval[0]);
+        float v2 = EnvelopeParams::env_dB2rap(envval[1]);
         out = v1 + (v2 - v1) * t;
 
         t += inct;
@@ -187,12 +196,14 @@ float Envelope::envout_dB()
         }
 
         if(out > 0.001f)
-            envoutval = env_rap2dB(out);
+            envoutval = EnvelopeParams::env_rap2dB(out);
         else
             envoutval = MIN_ENVELOPE_DB;
-    }
-    else
-        out = env_dB2rap(envout());
+    } else
+        out = EnvelopeParams::env_dB2rap(envout(false));
+
+    float pos[2] = {(float)currentpoint + t, out};
+    watchOut(pos, 2);
 
     return out;
 }

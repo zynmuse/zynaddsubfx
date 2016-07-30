@@ -6,19 +6,10 @@
   Copyright (C) 2002-2005 Nasca Octavian Paul
   Author: Nasca Octavian Paul
 
-  This program is free software; you can redistribute it and/or modify
-  it under the terms of version 2 of the GNU General Public License
-  as published by the Free Software Foundation.
-
-  This program is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU General Public License (version 2 or later) for more details.
-
-  You should have received a copy of the GNU General Public License (version 2)
-  along with this program; if not, write to the Free Software Foundation,
-  Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
-
+  This program is free software; you can redistribute it and/or
+  modify it under the terms of the GNU General Public License
+  as published by the Free Software Foundation; either version 2
+  of the License, or (at your option) any later version.
 */
 
 #ifndef MASTER_H
@@ -33,6 +24,7 @@
 #include "Recorder.h"
 
 #include "../Params/Controller.h"
+#include "../Synth/WatchPoint.h"
 
 class Allocator;
 
@@ -100,7 +92,7 @@ class Master
         void vuUpdate(const float *outl, const float *outr);
 
         /**Audio Output*/
-        void AudioOut(float *outl, float *outr) REALTIME;
+        bool AudioOut(float *outl, float *outr) REALTIME;
         /**Audio Output (for callback mode).
          * This allows the program to be controled by an external program*/
         void GetAudioOutSamples(size_t nsamples,
@@ -167,6 +159,13 @@ class Master
         //Statistics on output levels
         vuData vu;
 
+        //Display info on midi notes
+        bool activeNotes[128];
+
+        //Other watchers
+        WatchManager watcher;
+
+        //Midi Learn
         rtosc::MidiMapperRT midi;
 
         bool   frozenState;//read-only parameters for threadsafe actions

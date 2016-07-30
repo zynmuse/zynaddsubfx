@@ -178,18 +178,13 @@ bankui->show();}
       }
       Fl_Check_Button partenabled {
         label 01
-        callback {o->oscWrite("Penabled", o->value() ? "T" : "F");
-if ((int) o->value()==0) panellistitemgroup->deactivate();
-  else {
-    panellistitemgroup->activate();
-    /*
-    if ((int)bankui->cbwig->value()!=(npart+1)){
-       bankui->cbwig->value(npart+1);
-       bankui->cbwig->do_callback();
-    };*/
-};
+        callback {
+            if ((int) o->value()==0) panellistitemgroup->deactivate();
+            else {
+                panellistitemgroup->activate();
+            };
 
-o->redraw();}
+            o->redraw();}
         private xywh {5 0 45 20} down_box DOWN_BOX labeltype EMBOSSED_LABEL labelfont 1 labelsize 13 align 24
         code0 {char tmp[10];snprintf(tmp,10,"%d",npart+1);o->copy_label(tmp);}
         code1 {o->init("Penabled");}
@@ -243,13 +238,9 @@ class MasterUI {open
   } {
     Fl_Window masterwindow {
       label zynaddsubfx
-      callback {if ((
-\#ifdef PLUGINVERSION
-1
-\#elif USE_NSM 
-(nsm && nsm->is_active())
-\#else
-0
+      callback {if ((isPlugin
+\#if USE_NSM
+ || (nsm && nsm->is_active())
 \#endif
  || fl_choice("Exit and leave the unsaved data?","No","Yes",NULL))) {
     close();
@@ -322,6 +313,11 @@ osc->write("/load_xlz", "s", filename);}
               xywh {40 40 100 20}
             }
             MenuItem {} {
+              label {Clear Midi Learn...}
+              callback {osc->write("/clear_xlz", "");}
+              xywh {40 40 100 20}
+            }
+            MenuItem {} {
               label {Save Midi Learn...}
               callback {char *filename;
 int result;
@@ -345,9 +341,7 @@ filename=fl_file_chooser("Open:","({*.xsz})",NULL,0);
 if (filename==NULL) return;
 
 osc->write("/load_xsz", "s", filename);
-/*
-if (result==-10) fl_alert("Error: Could not load the file\\nbecause it is not a scale file.");
-      else if (result<0) fl_alert("Error: Could not load the file.");*/}
+}
               xywh {40 40 100 20}
             }
             MenuItem {} {
@@ -367,9 +361,7 @@ if (result) {
 };
 
 
-osc->write("/save_xsz", "s", filename);
-
-/*if (result<0) fl_alert("Error: Could not save the file.");*/}
+osc->write("/save_xsz", "s", filename); }
               xywh {30 30 100 20}
             }
             MenuItem {} {
@@ -476,7 +468,7 @@ fl_filename_setext(filename,".wav");
 
 //TODO TODO Test if a file exists
 if (fl_choice("The file *might* exist. \\nOverwrite it?","No","Yes",NULL)) {
-    osc->write("/HDDRecorder/preparefile", "T");
+    osc->write("/HDDRecorder/preparefile", "s", filename);
     recordbutton->activate();//TODO make this button osc controlled
 }
 
@@ -769,7 +761,7 @@ stopbutton->activate();
 pausebutton->activate();
 pauselabel->activate();
 o->oscWrite("HDDRecorder/start");
-o->oscWrite("resetvu");
+o->oscWrite("reset-vu");
 mastermenu->redraw();}
             tooltip {Start Recording} xywh {159 46 21 21} box ROUND_UP_BOX color 88 labelfont 1 labelsize 10 align 2 deactivate
             class Fl_Osc_Button
@@ -962,9 +954,8 @@ updatepanel();}
     }
     Fl_Window simplemasterwindow {
       label ZynAddSubFX
-      callback {\#ifndef PLUGINVERSION
-if (fl_choice("Exit and leave the unsaved data?","No","Yes",NULL))
-\#endif
+      callback {
+if (isPlugin || fl_choice("Exit and leave the unsaved data?","No","Yes",NULL))
 {
 	*exitprogram=1;
 };} open
@@ -1499,7 +1490,7 @@ selectuiwindow->hide();}
         xywh {10 165 100 35} color 229 labelfont 1 labelsize 16
       }
       Fl_Box {} {
-        label {.. if you have used ZynAddSubFX before, or you like to have full controll to all parameters.}
+        label {.. if you have used ZynAddSubFX before, or you like to have full control to all parameters.}
         xywh {110 165 310 35} labelfont 1 labelsize 11 align 144
       }
       Fl_Button {} {

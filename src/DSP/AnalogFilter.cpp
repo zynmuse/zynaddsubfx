@@ -7,19 +7,10 @@
   Author: Nasca Octavian Paul
           Mark McCurry
 
-  This program is free software; you can redistribute it and/or modify
-  it under the terms of version 2 of the GNU General Public License
-  as published by the Free Software Foundation.
-
-  This program is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU General Public License (version 2 or later) for more details.
-
-  You should have received a copy of the GNU General Public License (version 2)
-  along with this program; if not, write to the Free Software Foundation,
-  Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
-
+  This program is free software; you can redistribute it and/or
+  modify it under the terms of the GNU General Public License
+  as published by the Free Software Foundation; either version 2
+  of the License, or (at your option) any later version.
 */
 
 #include <cstring> //memcpy
@@ -70,28 +61,35 @@ void AnalogFilter::cleanup()
     needsinterpolation = false;
 }
 
-void AnalogFilter::computefiltercoefs(void)
+AnalogFilter::Coeff AnalogFilter::computeCoeff(int type, float cutoff, float q,
+        int stages, float gain, float fs, int &order)
 {
-    float tmp;
+    AnalogFilter::Coeff coeff;
     bool  zerocoefs = false; //this is used if the freq is too high
 
+    const float samplerate_f = fs;
+    const float halfsamplerate_f = fs/2;
+
     //do not allow frequencies bigger than samplerate/2
-    float freq = this->freq;
+    float freq = cutoff;
     if(freq > (halfsamplerate_f - 500.0f)) {
         freq      = halfsamplerate_f - 500.0f;
         zerocoefs = true;
     }
+
     if(freq < 0.1f)
         freq = 0.1f;
+
     //do not allow bogus Q
     if(q < 0.0f)
         q = 0.0f;
+
+
     float tmpq, tmpgain;
     if(stages == 0) {
         tmpq    = q;
         tmpgain = gain;
-    }
-    else {
+    } else {
         tmpq    = (q > 1.0f) ? powf(q, 1.0f / (stages + 1)) : q;
         tmpgain = powf(gain, 1.0f / (stages + 1));
     }
@@ -109,6 +107,9 @@ void AnalogFilter::computefiltercoefs(void)
     //the "Cookbook formulae for audio EQ" by Robert Bristow-Johnson
     //The original location of the Cookbook is:
     //http://www.harmony-central.com/Computer/Programming/Audio-EQ-Cookbook.txt
+    float tmp;
+    float tgp1;
+    float tgm1;
     switch(type) {
         case 0: //LPF 1 pole
             if(!zerocoefs)
@@ -214,20 +215,15 @@ void AnalogFilter::computefiltercoefs(void)
             if(!zerocoefs) {
                 tmpq  = sqrtf(tmpq);
                 beta  = sqrtf(tmpgain) / tmpq;
-                tmp   = (tmpgain + 1.0f) + (tmpgain - 1.0f) * cs + beta * sn;
+                tgp1  = tmpgain + 1.0f;
+                tgm1  = tmpgain - 1.0f;
+                tmp   = tgp1 + tgm1 * cs + beta * sn;
 
-                c[0] = tmpgain
-                       * ((tmpgain
-                           + 1.0f) - (tmpgain - 1.0f) * cs + beta * sn) / tmp;
-                c[1] = 2.0f * tmpgain
-                       * ((tmpgain - 1.0f) - (tmpgain + 1.0f) * cs) / tmp;
-                c[2] = tmpgain
-                       * ((tmpgain
-                           + 1.0f) - (tmpgain - 1.0f) * cs - beta * sn) / tmp;
-                d[1] = -2.0f * ((tmpgain - 1.0f) + (tmpgain + 1.0f) * cs)
-                       / tmp * -1.0f;
-                d[2] = ((tmpgain + 1.0f) + (tmpgain - 1.0f) * cs - beta * sn)
-                       / tmp * -1.0f;
+                c[0] = tmpgain * (tgp1 - tgm1 * cs + beta * sn) / tmp;
+                c[1] = 2.0f * tmpgain * (tgm1 - tgp1 * cs) / tmp;
+                c[2] = tmpgain * (tgp1 - tgm1 * cs - beta * sn) / tmp;
+                d[1] = -2.0f * (tgm1 + tgp1 * cs) / tmp * -1.0f;
+                d[2] = (tgp1 + tgm1 * cs - beta * sn) / tmp * -1.0f;
             }
             else {
                 c[0] = tmpgain;
@@ -239,20 +235,15 @@ void AnalogFilter::computefiltercoefs(void)
             if(!zerocoefs) {
                 tmpq  = sqrtf(tmpq);
                 beta  = sqrtf(tmpgain) / tmpq;
-                tmp   = (tmpgain + 1.0f) - (tmpgain - 1.0f) * cs + beta * sn;
+                tgp1  = tmpgain + 1.0f;
+                tgm1  = tmpgain - 1.0f;
+                tmp   = tgp1 - tgm1 * cs + beta * sn;
 
-                c[0] = tmpgain
-                       * ((tmpgain
-                           + 1.0f) + (tmpgain - 1.0f) * cs + beta * sn) / tmp;
-                c[1] = -2.0f * tmpgain
-                       * ((tmpgain - 1.0f) + (tmpgain + 1.0f) * cs) / tmp;
-                c[2] = tmpgain
-                       * ((tmpgain
-                           + 1.0f) + (tmpgain - 1.0f) * cs - beta * sn) / tmp;
-                d[1] = 2.0f * ((tmpgain - 1.0f) - (tmpgain + 1.0f) * cs)
-                       / tmp * -1.0f;
-                d[2] = ((tmpgain + 1.0f) - (tmpgain - 1.0f) * cs - beta * sn)
-                       / tmp * -1.0f;
+                c[0] = tmpgain * (tgp1 + tgm1 * cs + beta * sn) / tmp;
+                c[1] = -2.0f * tmpgain * (tgm1 + tgp1 * cs) / tmp;
+                c[2] = tmpgain * (tgp1 + tgm1 * cs - beta * sn) / tmp;
+                d[1] = 2.0f * (tgm1 - tgp1 * cs) / tmp * -1.0f;
+                d[2] = (tgp1 - tgm1 * cs - beta * sn) / tmp * -1.0f;
             }
             else {
                 c[0] = 1.0f;
@@ -261,10 +252,16 @@ void AnalogFilter::computefiltercoefs(void)
             order = 2;
             break;
         default: //wrong type
-            type = 0;
-            computefiltercoefs();
+            assert(false && "wrong type for a filter");
             break;
     }
+    return coeff;
+}
+
+void AnalogFilter::computefiltercoefs(void)
+{
+    coeff = AnalogFilter::computeCoeff(type, freq, q, stages, gain,
+            samplerate_f, order);
 }
 
 
@@ -323,9 +320,11 @@ void AnalogFilter::setstages(int stages_)
 {
     if(stages_ >= MAX_FILTER_STAGES)
         stages_ = MAX_FILTER_STAGES - 1;
-    stages = stages_;
-    cleanup();
-    computefiltercoefs();
+    if(stages_  != stages) {
+        stages = stages_;
+        cleanup();
+        computefiltercoefs();
+    }
 }
 
 inline void AnalogBiquadFilterA(const float coeff[5], float &src, float work[4])

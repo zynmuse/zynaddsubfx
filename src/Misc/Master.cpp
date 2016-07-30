@@ -6,19 +6,10 @@
   Copyright (C) 2002-2005 Nasca Octavian Paul
   Author: Nasca Octavian Paul
 
-  This program is free software; you can redistribute it and/or modify
-  it under the terms of version 2 of the GNU General Public License
-  as published by the Free Software Foundation.
-
-  This program is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU General Public License (version 2 or later) for more details.
-
-  You should have received a copy of the GNU General Public License (version 2)
-  along with this program; if not, write to the Free Software Foundation,
-  Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
-
+  This program is free software; you can redistribute it and/or
+  modify it under the terms of the GNU General Public License
+  as published by the Free Software Foundation; either version 2
+  of the License, or (at your option) any later version.
 */
 
 #include "Master.h"
@@ -31,6 +22,7 @@
 #include "../Effects/EffectMgr.h"
 #include "../DSP/FFTwrapper.h"
 #include "../Misc/Allocator.h"
+#include "../Containers/ScratchString.h"
 #include "../Nio/Nio.h"
 #include "PresetExtractor.h"
 
@@ -83,7 +75,7 @@ static const Ports sysefxPort =
 
 static const Ports sysefsendto =
 {
-    {"to#" STRINGIFY(NUM_SYS_EFX) "::i", 
+    {"to#" STRINGIFY(NUM_SYS_EFX) "::i",
         rProp(parameter) rDoc("sysefx to sysefx routing gain"), 0, [](const char *m, RtData&d)
         {
             //same ugly workaround as before
@@ -106,6 +98,17 @@ static const Ports sysefsendto =
         }}
 };
 
+#define rBegin [](const char *msg, RtData &d) { Master *m = (Master*)d.obj
+#define rEnd }
+
+static const Ports watchPorts = {
+    {"add:s", rDoc("Add synthesis state to watch"), 0,
+        rBegin;
+        m->watcher.add_watch(rtosc_argument(msg,0).s);
+        rEnd},
+};
+
+extern const Ports bankPorts;
 static const Ports master_ports = {
     rString(last_xmz, XMZ_PATH_MAX, "File name for last name loaded if any."),
     rRecursp(part, 16, "Part"),//NUM_MIDI_PARTS
@@ -113,8 +116,12 @@ static const Ports master_ports = {
     rRecursp(insefx, 8, "Insertion Effect"),//NUM_INS_EFX
     rRecur(microtonal, "Micrtonal Mapping Functionality"),
     rRecur(ctl, "Controller"),
-    rArrayI(Pinsparts, NUM_INS_EFX, "Part to insert part onto"),
-    {"Pkeyshift::i", rProp(parameter) rLinear(0,127) rDoc("Global Key Shift"), 0, [](const char *m, RtData&d) {
+    rArrayI(Pinsparts, NUM_INS_EFX, rOpt(-1, Master),
+            rOptions(Part1, Part2, Part3, Part4,  Part5, Part6,
+                 Part7, Part8, Part9, Part10, Part11, Part12,
+                 Part13, Part14, Part15, Part16),
+                "Part to insert part onto"),
+    {"Pkeyshift::i", rShort("key shift") rProp(parameter) rLinear(0,127) rDoc("Global Key Shift"), 0, [](const char *m, RtData&d) {
         if(rtosc_narguments(m)==0) {
             d.reply(d.loc, "i", ((Master*)d.obj)->Pkeyshift);
         } else if(rtosc_narguments(m)==1 && rtosc_type(m,0)=='i') {
@@ -125,6 +132,22 @@ static const Ports master_ports = {
     {"get-vu:", rDoc("Grab VU Data"), 0, [](const char *, RtData &d) {
        Master *m = (Master*)d.obj;
        d.reply("/vu-meter", "bb", sizeof(m->vu), &m->vu, sizeof(float)*NUM_MIDI_PARTS, m->vuoutpeakpart);}},
+    {"vu-meter:", rDoc("Grab VU Data"), 0, [](const char *, RtData &d) {
+       Master *m = (Master*)d.obj;
+       char        types[6+NUM_MIDI_PARTS+1] = {0};
+       rtosc_arg_t  args[6+NUM_MIDI_PARTS+1];
+       for(int i=0; i<6+NUM_MIDI_PARTS; ++i)
+           types[i] = 'f';
+       args[0].f = m->vu.outpeakl;
+       args[1].f = m->vu.outpeakr;
+       args[2].f = m->vu.maxoutpeakl;
+       args[3].f = m->vu.maxoutpeakr;
+       args[4].f = m->vu.rmspeakl;
+       args[5].f = m->vu.rmspeakr;
+       for(int i=0; i<NUM_MIDI_PARTS; ++i)
+           args[6+i].f = m->vuoutpeakpart[i];
+
+       d.replyArray("/vu-meter", types, args);}},
     {"reset-vu:", rDoc("Grab VU Data"), 0, [](const char *, RtData &d) {
        Master *m = (Master*)d.obj;
        m->vuresetpeaks();}},
@@ -138,14 +161,21 @@ static const Ports master_ports = {
        m->part[i] = p;
        p->initialize_rt();
        }},
-    {"Pvolume::i", rProp(parameter) rLinear(0,127) rDoc("Master Volume"), 0,
+    {"active_keys:", rProp("Obtain a list of active notes"), 0,
+        rBegin;
+        char keys[129] = {0};
+        for(int i=0; i<128; ++i)
+            keys[i] = m->activeNotes[i] ? 'T' : 'F';
+        d.broadcast(d.loc, keys);
+        rEnd},
+    {"Pvolume::i", rShort("volume") rProp(parameter) rLinear(0,127) rDoc("Master Volume"), 0,
         [](const char *m, rtosc::RtData &d) {
         if(rtosc_narguments(m)==0) {
             d.reply(d.loc, "i", ((Master*)d.obj)->Pvolume);
         } else if(rtosc_narguments(m)==1 && rtosc_type(m,0)=='i') {
             ((Master*)d.obj)->setPvolume(limit<char>(rtosc_argument(m,0).i,0,127));
             d.broadcast(d.loc, "i", ((Master*)d.obj)->Pvolume);}}},
-    {"volume::i", rProp(parameter) rLinear(0,127) rDoc("Master Volume"), 0,
+    {"volume::i", rShort("volume") rProp(parameter) rLinear(0,127) rDoc("Master Volume"), 0,
         [](const char *m, rtosc::RtData &d) {
         if(rtosc_narguments(m)==0) {
             d.reply(d.loc, "i", ((Master*)d.obj)->Pvolume);
@@ -237,7 +267,30 @@ static const Ports master_ports = {
         SNIP
             preset_ports.dispatch(msg, data);
         rBOIL_END},
+    {"HDDRecorder/preparefile:s", rDoc("Init WAV file"), 0, [](const char *msg, RtData &d) {
+       Master *m = (Master*)d.obj;
+       m->HDDRecorder.preparefile(rtosc_argument(msg, 0).s, 1);}},
+    {"HDDRecorder/start:", rDoc("Start recording"), 0, [](const char *, RtData &d) {
+       Master *m = (Master*)d.obj;
+       m->HDDRecorder.start();}},
+    {"HDDRecorder/stop:", rDoc("Stop recording"), 0, [](const char *, RtData &d) {
+       Master *m = (Master*)d.obj;
+       m->HDDRecorder.stop();}},
+    {"HDDRecorder/pause:", rDoc("Pause recording"), 0, [](const char *, RtData &d) {
+       Master *m = (Master*)d.obj;
+       m->HDDRecorder.pause();}},
+    {"watch/", rDoc("Interface to grab out live synthesis state"), &watchPorts,
+        rBOIL_BEGIN;
+        SNIP;
+        watchPorts.dispatch(msg, data);
+        rBOIL_END},
+    {"bank/", rDoc("Controls for instrument banks"), &bankPorts,
+            [](const char*,RtData&) {}},
 };
+
+#undef rBegin
+#undef rEnd
+
 const Ports &Master::ports = master_ports;
 
 class DataObj:public rtosc::RtData
@@ -253,6 +306,12 @@ class DataObj:public rtosc::RtData
             forwarded = false;
         }
 
+        virtual void replyArray(const char *path, const char *args, rtosc_arg_t *vals) override
+        {
+            char *buffer = bToU->buffer();
+            rtosc_amessage(buffer,bToU->buffer_size(),path,args,vals);
+            reply(buffer);
+        }
         virtual void reply(const char *path, const char *args, ...) override
         {
             va_list va;
@@ -329,9 +388,11 @@ Master::Master(const SYNTH_T &synth_, Config* config)
         fakepeakpart[npart]  = 0;
     }
 
+    ScratchString ss;
     for(int npart = 0; npart < NUM_MIDI_PARTS; ++npart)
         part[npart] = new Part(*memory, synth, time, config->cfg.GzipCompression,
-                               config->cfg.Interpolation, &microtonal, fft);
+                               config->cfg.Interpolation, &microtonal, fft, &watcher,
+                               (ss+"/part"+npart+"/").c_str);
 
     //Insertion Effects init
     for(int nefx = 0; nefx < NUM_INS_EFX; ++nefx)
@@ -341,6 +402,9 @@ Master::Master(const SYNTH_T &synth_, Config* config)
     for(int nefx = 0; nefx < NUM_SYS_EFX; ++nefx)
         sysefx[nefx] = new EffectMgr(*memory, synth, 0, &time);
 
+    //Note Visualization
+    for(int i=0; i<128; ++i)
+        activeNotes[i] = 0;
 
     defaults();
 
@@ -354,7 +418,7 @@ void Master::applyOscEvent(const char *msg)
     DataObj d{loc_buf, 1024, this, bToU};
     memset(loc_buf, 0, sizeof(loc_buf));
     d.matches = 0;
-        
+
     if(strcmp(msg, "/get-vu") && false) {
         fprintf(stdout, "%c[%d;%d;%dm", 0x1B, 0, 5 + 30, 0 + 40);
         fprintf(stdout, "backend[*]: '%s'<%s>\n", msg,
@@ -407,12 +471,14 @@ void Master::defaults()
 void Master::noteOn(char chan, char note, char velocity)
 {
     if(velocity) {
-        for(int npart = 0; npart < NUM_MIDI_PARTS; ++npart)
+        for(int npart = 0; npart < NUM_MIDI_PARTS; ++npart) {
             if(chan == part[npart]->Prcvchn) {
                 fakepeakpart[npart] = velocity * 2;
                 if(part[npart]->Penabled)
                     part[npart]->NoteOn(note, velocity, keyshift);
             }
+        }
+        activeNotes[(int)note] = 1;
     }
     else
         this->noteOff(chan, note);
@@ -427,6 +493,7 @@ void Master::noteOff(char chan, char note)
     for(int npart = 0; npart < NUM_MIDI_PARTS; ++npart)
         if((chan == part[npart]->Prcvchn) && part[npart]->Penabled)
             part[npart]->NoteOff(note);
+    activeNotes[(int)note] = 0;
 }
 
 /*
@@ -618,7 +685,7 @@ int msg_id=0;
 /*
  * Master audio out (the final sound)
  */
-void Master::AudioOut(float *outl, float *outr)
+bool Master::AudioOut(float *outr, float *outl)
 {
     //Danger Limits
     if(memory->lowMemory(2,1024*1024))
@@ -629,6 +696,13 @@ void Master::AudioOut(float *outl, float *outr)
         bToU->write("/request-memory", "");
         pendingMemory = true;
     }
+
+
+    //Handle watch points
+    if(bToU)
+        watcher.write_back = bToU;
+    watcher.tick();
+
     //Handle user events TODO move me to a proper location
     char loc_buf[1024];
     DataObj d{loc_buf, 1024, this, bToU};
@@ -645,7 +719,7 @@ void Master::AudioOut(float *outl, float *outr)
             if (mastercb)
                 mastercb(mastercb_ptr, new_master);
             bToU->write("/free", "sb", "Master", sizeof(Master*), &this_master);
-            return;
+            return false;
         }
 
         //XXX yes, this is not realtime safe, but it is useful...
@@ -673,7 +747,7 @@ void Master::AudioOut(float *outl, float *outr)
     }
     if(events>1 && false)
         fprintf(stderr, "backend: %d events per cycle\n",events);
-        
+
 
     //Swaps the Left channel with Right Channel
     if(swaplr)
@@ -821,6 +895,8 @@ void Master::AudioOut(float *outl, float *outr)
 
     //update the global frame timer
     time++;
+
+    return true;
 }
 
 //TODO review the respective code from yoshimi for this
@@ -846,7 +922,9 @@ void Master::GetAudioOutSamples(size_t nsamples,
             nsamples -= smps;
 
             //generate samples
-            AudioOut(bufl, bufr);
+            if (! AudioOut(bufl, bufr))
+                return;
+
             off  = 0;
             out_off  += smps;
             smps = synth.buffersize;
@@ -920,6 +998,8 @@ void Master::ShutUp()
         insefx[nefx]->cleanup();
     for(int nefx = 0; nefx < NUM_SYS_EFX; ++nefx)
         sysefx[nefx]->cleanup();
+    for(int i = 0; i < sizeof(activeNotes)/sizeof(activeNotes[0]); ++i)
+        activeNotes[i] = 0;
     vuresetpeaks();
     shutup = 0;
 }

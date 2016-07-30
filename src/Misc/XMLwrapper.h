@@ -7,24 +7,16 @@
   Author: Nasca Octavian Paul
           Mark McCurry
 
-  This program is free software; you can redistribute it and/or modify
-  it under the terms of version 2 of the GNU General Public License
-  as published by the Free Software Foundation.
-
-  This program is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU General Public License (version 2 or later) for more details.
-
-  You should have received a copy of the GNU General Public License (version 2)
-  along with this program; if not, write to the Free Software Foundation,
-  Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
-
+  This program is free software; you can redistribute it and/or
+  modify it under the terms of the GNU General Public License
+  as published by the Free Software Foundation; either version 2
+  of the License, or (at your option) any later version.
 */
 
 #include <mxml.h>
 #include <string>
 #include <vector>
+#include "../zyn-version.h"
 
 #ifndef XML_WRAPPER_H
 #define XML_WRAPPER_H
@@ -241,6 +233,10 @@ class XMLwrapper
 
         std::vector<XmlNode> getBranch(void) const;
 
+        const version_type& fileversion() const {
+            return _fileversion;
+        }
+
     private:
 
         /**
@@ -280,13 +276,8 @@ class XMLwrapper
          */
         mxml_node_t *addparams(const char *name, unsigned int params,
                                ...) const;
-
-        /**@todo keep these numbers up to date*/
-        struct {
-            int Major; /**<major version number.*/
-            int Minor; /**<minor version number.*/
-            int Revision; /**<version revision number.*/
-        } version;
+public:
+        version_type _fileversion;
 };
 
 #endif

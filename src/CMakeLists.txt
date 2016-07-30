@@ -13,27 +13,24 @@ endif()
 include(CheckFunctionExists)
 include(CheckIncludeFile)
 include(CheckCXXSourceCompiles)
+<<<<<<< HEAD
 include(CheckCXXCompilerFlag) 
-find_package(PkgConfig REQUIRED)
 
-#Apply pkg config paths for some apps
-if(MinimalDir)
-    set(ENV{PKG_CONFIG_PATH} "${PKG_CONFIG_PATH}:${MinimalDir}/lib${LIBSUFFIX}/pkgconfig/")
+if(NOT (${CMAKE_SYSTEM_NAME} STREQUAL "Windows"))
+    find_package(PkgConfig)
+    #Apply pkg config paths for some apps
+    if(MinimalDir)
+        set(ENV{PKG_CONFIG_PATH}
+            "${PKG_CONFIG_PATH}:${MinimalDir}/lib${LIBSUFFIX}/pkgconfig/")
+    endif()
 endif()
 
 find_package(zlib REQUIRED)
 find_package(X11)
 check_include_file(X11/xpm.h HAS_XPM)
-pkg_check_modules(FFTW REQUIRED fftw3)
-pkg_check_modules(MXML REQUIRED mxml)
 find_package(Threads   REQUIRED)
 find_package(OSS)
 find_package(Alsa)
-pkg_check_modules(JACK jack)
-pkg_check_modules(PORTAUDIO portaudio-2.0>=19)
-set(FLTK_SKIP_OPENGL true)
-pkg_check_modules(NTK ntk)
-pkg_check_modules(NTK_IMAGES ntk_images)
 find_package(FLTK)
 find_package(OpenGL) #for FLTK
 find_package(CxxTest)
@@ -41,14 +38,35 @@ if(CXXTEST_FOUND)
     set(CXXTEST_USE_PYTHON TRUE)
 endif()
 # lash
-pkg_search_module(LASH lash-1.0)
-mark_as_advanced(LASH_LIBRARIES)
-pkg_search_module(DSSI dssi>=0.9.0)
-mark_as_advanced(DSSI_LIBRARIES)
-pkg_search_module(LIBLO liblo>=0.26 REQUIRED)
-mark_as_advanced(LIBLO_LIBRARIES)
-pkg_search_module(MINIMAL minimal>=0.0.1)
-mark_as_advanced(MINIMAL_LIBRARIES)
+
+if(PKG_CONFIG_FOUND AND NOT (${CMAKE_SYSTEM_NAME} STREQUAL "Windows"))
+    message("Looking For pkg config modules")
+    pkg_check_modules(JACK jack)
+    pkg_check_modules(PORTAUDIO portaudio-2.0>=19)
+    set(FLTK_SKIP_OPENGL true)
+    pkg_check_modules(NTK ntk)
+    pkg_check_modules(NTK_IMAGES ntk_images)
+
+    pkg_check_modules(FFTW REQUIRED fftw3)
+    pkg_check_modules(MXML REQUIRED mxml)
+
+    pkg_check_modules(PORTAUDIO portaudio-2.0>=19)
+
+    pkg_search_module(LASH lash-1.0)
+    mark_as_advanced(LASH_LIBRARIES)
+    pkg_search_module(DSSI dssi>=0.9.0)
+    mark_as_advanced(DSSI_LIBRARIES)
+    pkg_search_module(LIBLO liblo>=0.26 REQUIRED)
+    mark_as_advanced(LIBLO_LIBRARIES)
+    pkg_search_module(MINIMAL minimal>=0.0.1)
+    mark_as_advanced(MINIMAL_LIBRARIES)
+else()
+    find_package(FFTW REQUIRED)
+    find_package(MXML REQUIRED)
+    find_package(LIBLO REQUIRED)
+    find_package(PORTAUDIO)
+    find_package(MINIMAL)
+endif()
 
 CHECK_FUNCTION_EXISTS(sched_setscheduler HAVE_SCHEDULER)
 set(CMAKE_REQUIRED_FLAGS "-std=c++11")
@@ -93,8 +111,10 @@ SET (LashEnable ${LASH_FOUND} CACHE BOOL
     "Enable LASH Audio Session Handler")
 SET (DssiEnable ${DSSI_FOUND} CACHE BOOL
     "Enable DSSI Plugin compilation")
-SET (LibloEnable ${LIBLO_FOUND} CACHE BOOL
-    "Enable Liblo")
+SET (NoNeonPlease False CACHE BOOL
+    "Workaround For Broken Neon Detection")
+SET (PluginLibDir "lib" CACHE STRING
+    "Install directory for plugin libraries PREFIX/PLUGIN_LIB_DIR/{lv2,vst}")
 SET (MinimalEnable ${MINIMAL_FOUND} CACHE BOOL
     "Enable Minimal Plugin compilation")
 
@@ -103,6 +123,9 @@ SET (MinimalEnable ${MINIMAL_FOUND} CACHE BOOL
 
 # Add version information
 add_definitions(-DVERSION="${VERSION}")
+if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
+  add_definitions(-static)
+endif()
 
 if(NOT "Darwin" STREQUAL ${CMAKE_SYSTEM_NAME})
     # Add scheduler function existance info (OSX compatiability)
@@ -241,13 +264,12 @@ if(LashEnable)
 	list(APPEND AUDIO_LIBRARY_DIRS ${LASH_LIBRARY_DIRS})
 	message(STATUS "Compiling with lash")
 endif()
-if(LibloEnable)
-	include_directories(${LIBLO_INCLUDE_DIRS})
-	add_definitions(-DUSE_NSM=1)
-    list(APPEND AUDIO_LIBRARIES ${LIBLO_LIBRARIES})
-	list(APPEND AUDIO_LIBRARY_DIRS ${LIBLO_LIBRARY_DIRS})
-	message(STATUS "Compiling with liblo")
-endif()
+
+include_directories(${LIBLO_INCLUDE_DIRS})
+add_definitions(-DUSE_NSM=1)
+list(APPEND AUDIO_LIBRARIES ${LIBLO_LIBRARIES})
+list(APPEND AUDIO_LIBRARY_DIRS ${LIBLO_LIBRARY_DIRS})
+message(STATUS "Compiling with liblo")
 
 if(MinimalEnable)
 	pkg_check_modules(SNDFILE sndfile)
@@ -265,6 +287,10 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/env.in
 
 # other include directories
 include_directories(${ZLIB_INCLUDE_DIRS} ${MXML_INCLUDE_DIRS})
+
+if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
+    add_definitions(-DWIN32)
+endif()
 
 add_definitions(
 	 -Wall
@@ -296,14 +322,16 @@ else (BuildForDebug)
 		set (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} ${BuildOptions_SSE}")
 	endif (SUPPORT_SSE)
 	
-	if (SUPPORT_NEON)
+    if (SUPPORT_NEON AND NOT NoNeonPlease)
 		set (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} ${BuildOptions_NEON}")
-	endif (SUPPORT_NEON)
+	endif (SUPPORT_NEON AND NOT NoNeonPlease)
 	
 	message (STATUS "Building for ${CMAKE_BUILD_TYPE}, flags: ${CMAKE_CXX_FLAGS_RELEASE}")
 endif (BuildForDebug)
 
-add_definitions(-fPIC)
+if(NOT (${CMAKE_SYSTEM_NAME} STREQUAL "Windows"))
+    add_definitions(-fPIC)
+endif()
 
 if(FLTK_FOUND)
 	mark_as_advanced(FORCE FLTK_BASE_LIBRARY)
@@ -359,8 +387,8 @@ endif()
 
 if(NtkGui)
 
-        find_program( FLTK_FLUID_EXECUTABLE ntk-fluid)
-        
+    find_program( FLTK_FLUID_EXECUTABLE ntk-fluid)
+
 	message(STATUS ${NTK_LDFLAGS} ${NTK_IMAGES_LDFLAGS})
 
 	set(GUI_LIBRARIES zynaddsubfx_gui ${NTK_LIBRARIES} ${NTK_IMAGES_LIBRARIES} ${OPENGL_LIBRARIES})
@@ -383,9 +411,7 @@ if(NtkGui)
 endif()
 
 if(NOT FltkGui AND NOT NtkGui)
-    if(LibloEnable)
-        set(NSM_WORKAROUND UI/NSM.C UI/NSM/Client.C)
-    endif()
+    set(NSM_WORKAROUND UI/NSM.C UI/NSM/Client.C)
     add_library(zynaddsubfx_gui_bridge STATIC UI/ConnectionDummy.cpp ${NSM_WORKAROUND})
     add_definitions(-DNO_UI=1)
 endif()
@@ -393,6 +419,9 @@ endif()
 ########### General section ##############
 # Following this should be only general compilation code, and no mention
 # of module-specific variables
+
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/zyn-version.h.in
+	${CMAKE_CURRENT_BINARY_DIR}/zyn-version.h)
 
 link_directories(${AUDIO_LIBRARY_DIRS} ${ZLIB_LIBRARY_DIRS} ${FFTW_LIBRARY_DIRS} ${MXML_LIBRARY_DIRS} ${FLTK_LIBRARY_DIRS} ${NTK_LIBRARY_DIRS})
 
@@ -418,10 +447,13 @@ add_subdirectory(Effects)
 add_subdirectory(Params)
 add_subdirectory(DSP)
 add_subdirectory(Nio)
+add_subdirectory(Plugin)
 
 add_library(zynaddsubfx_core STATIC
+    version.cpp
     globals.cpp
     ../tlsf/tlsf.c
+    Containers/ScratchString.cpp
     Containers/NotePool.cpp
     Containers/MultiPseudoStack.cpp
 	${zynaddsubfx_dsp_SRCS}
@@ -431,12 +463,24 @@ add_library(zynaddsubfx_core STATIC
 	${zynaddsubfx_synth_SRCS}
 	)
 
+if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
+    set(PTHREAD_LIBRARY winpthread)
+    set(PLATFORM_LIBRARIES ws2_32
+            winmm
+            wsock32
+            "-static" iphlpapi
+            "-static" winpthread)
+else()
+    set(PLATFORM_LIBRARIES "")
+    set(PTHREAD_LIBRARY pthread)
+endif()
+
 target_link_libraries(zynaddsubfx_core
 	${ZLIB_LIBRARIES}
 	${FFTW_LIBRARIES}
 	${MXML_LIBRARIES}
 	${OS_LIBRARIES}
-	pthread
+    ${PTHREAD_LIBRARY}
     rtosc rtosc-cpp)
 
 if(CompileTests)
@@ -454,7 +498,8 @@ target_link_libraries(zynaddsubfx
 	${GUI_LIBRARIES}
 	${NIO_LIBRARIES}
 	${AUDIO_LIBRARIES}
-	)
+    ${PLATFORM_LIBRARIES}
+    )
 
 if (DssiEnable)
 	add_library(zynaddsubfx_dssi SHARED
@@ -471,11 +516,7 @@ if (DssiEnable)
 		${OS_LIBRARIES}
         ${LIBLO_LIBRARIES}
 		)
-	if (${CMAKE_SIZEOF_VOID_P} EQUAL "8")
-		install(TARGETS zynaddsubfx_dssi LIBRARY DESTINATION lib64/dssi/)
-	else ()
-		install(TARGETS zynaddsubfx_dssi LIBRARY DESTINATION lib/dssi/)
-	endif ()
+    install(TARGETS zynaddsubfx_dssi LIBRARY DESTINATION ${PluginLibDir}/dssi/)
 endif()
 
 if(MinimalEnable)
@@ -571,7 +612,6 @@ package_status(X11_FOUND        "x11      " "found"   ${Yellow})
 package_status(CXXTEST_FOUND    "CxxTest  " "found"   ${Yellow})
 package_status(LashEnable       "Lash     " "enabled" ${Yellow})
 package_status(DssiEnable       "DSSI     " "enabled" ${Yellow})
-package_status(LibloEnable      "liblo    " "enabled" ${Red})
 package_status(CompileTests     "tests    " "enabled" ${Yellow})
 package_status(AlsaEnable       "ALSA     " "enabled" ${Yellow})
 package_status(JackEnable       "JACK     " "enabled" ${Yellow})

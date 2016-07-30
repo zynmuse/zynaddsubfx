@@ -1,40 +1,59 @@
 /*
-
-  Phaser.cpp  - Phasing and Approximate digital model of an analog JFET phaser.
-  Analog modeling implemented by Ryan Billing aka Transmogrifox.
   ZynAddSubFX - a software synthesizer
 
-  Phaser.cpp - Phaser effect
+  Phaser.cpp - Phasing and Approximate digital model of an analog JFET phaser.
+               Analog modeling implemented by Ryan Billing aka Transmogrifox.
+               DSP analog modeling theory & practice largely influenced by
+               various CCRMA publications, particularly works by Julius O. Smith.
   Copyright (C) 2002-2005 Nasca Octavian Paul
   Copyright (C) 2009-2010 Ryan Billing
   Copyright (C) 2010-2010 Mark McCurry
-  Author: Nasca Octavian Paul
-          Ryan Billing
-          Mark McCurry
 
-  DSP analog modeling theory & practice largely influenced by various CCRMA publications, particularly works by Julius O. Smith.
-
-  This program is free software; you can redistribute it and/or modify
-  it under the terms of version 2 of the GNU General Public License
-  as published by the Free Software Foundation.
-
-  This program is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU General Public License (version 2 or later) for more details.
-
-  You should have received a copy of the GNU General Public License (version 2)
-  along with this program; if not, write to the Free Software Foundation,
-  Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
-
+  This program is free software; you can redistribute it and/or
+  modify it under the terms of the GNU General Public License
+  as published by the Free Software Foundation; either version 2
+  of the License, or (at your option) any later version.
 */
 
 #include <cmath>
 #include <algorithm>
+#include <rtosc/ports.h>
+#include <rtosc/port-sugar.h>
 #include "../Misc/Allocator.h"
 #include "Phaser.h"
 
 using namespace std;
+
+#define rObject Phaser
+#define rBegin [](const char *, rtosc::RtData &) {
+#define rEnd }
+
+rtosc::Ports Phaser::ports = {
+    {"preset::i", rOptions(Alienwah 1, Alienwah 2, Alienwah 3, Alienwah 4)
+                  rDoc("Instrument Presets"), 0,
+                  rBegin;
+                  rEnd},
+    //Pvolume/Ppanning are common
+    rEffPar(lfo.Pfreq,       2, rShort("freq"),     ""),
+    rEffPar(lfo.Prandomness, 3, rShort("rnd."),     ""),
+    rEffPar(lfo.PLFOtype,    4, rShort("type"),
+          rOptions(sine, tri), "lfo shape"),
+    rEffParTF(lfo.Pstereo,   5, rShort("stereo"),   ""),
+    rEffPar(Pdepth,          6, rShort("depth"),    ""),
+    rEffPar(Pfb,             7, rShort("fb"),       ""),
+    rEffPar(Pstages,         8, rShort("stages"),   ""),
+    rEffPar(Plrcross,        9, rShort("cross"),    ""),
+    rEffPar(Poffset,         9, rShort("off"),      "Offset"),
+    rEffParTF(Poutsub,      10, rShort("sub"),      ""),
+    rEffPar(Pphase,         11, rShort("phase"),    ""),
+    rEffPar(Pwidth,         11, rShort("width"),    ""),
+    rEffParTF(Phyper,       12, rShort("hyp."),     ""),
+    rEffPar(Pdistortion,    13, rShort("distort"),  "Distortion"),
+    rEffParTF(Panalog,      14, rShort("analog"),   ""),
+};
+#undef rBegin
+#undef rEnd
+#undef rObject
 
 #define PHASER_LFO_SHAPE 2
 #define ONE_  0.99999f        // To prevent LFO ever reaching 1.0f for filter stability purposes
