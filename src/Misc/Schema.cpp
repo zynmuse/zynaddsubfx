@@ -23,6 +23,8 @@ namespace zyn {
  *   - 'type'      : type
  *   - 'domain'    : range [OPTIONAL]
  *   - 'options'   : [option...] [OPTIONAL]
+ *   - 'default'   : string
+ *   - 'defaults'  : defaults
  * type : {'int', 'float', 'boolean'}
  * action :
  *   - 'path' : path-id
@@ -31,6 +33,9 @@ namespace zyn {
  *   - 'type'   : type
  *   - 'domain' : range [OPTIONAL]
  * option :
+ *   - 'id'    : id-number
+ *   - 'value' : string-rep
+ * defaults :
  *   - 'id'    : id-number
  *   - 'value' : string-rep
  */
@@ -169,6 +174,7 @@ void dump_param_cb(const rtosc::Port *p, const char *full_name, void *v)
 
     const char *min = meta["min"];
     const char *max = meta["max"];
+    const char *def = meta["default"];
 
     for(auto m:meta) {
         if(strlen(m.title) >= 5 && !memcmp(m.title, "map ", 4)) {
@@ -192,6 +198,8 @@ void dump_param_cb(const rtosc::Port *p, const char *full_name, void *v)
     o << "        \"type\"     : \"" << type  << "\"";
     if(min && max)
         o << ",\n        \"range\"    : [" << min << "," << max << "]";
+    if(def)
+        o << ",\n        \"default\"  : \"" << def << "\"\n";
     if(!options.empty()) {
         o << ",\n        \"options\"  : [\n";
         int N = options.size();
