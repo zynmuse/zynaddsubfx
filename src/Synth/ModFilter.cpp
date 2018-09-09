@@ -19,6 +19,7 @@
 #include "../DSP/SVFilter.h"
 #include "../DSP/AnalogFilter.h"
 #include "../DSP/FormantFilter.h"
+#include "../DSP/MoogFilter.h"
 #include <cassert>
 
 namespace zyn {
@@ -125,6 +126,8 @@ static int current_category(Filter *f)
         return 1;
     else if(dynamic_cast<SVFilter*>(f))
         return 2;
+    else if(dynamic_cast<MoogFilter*>(f))
+        return 3;
 
     assert(false);
     return -1;
