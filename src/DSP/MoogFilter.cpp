@@ -1,5 +1,6 @@
 #include <cassert>
 #include <cstdio>
+#include <array>
 #include <vector>
 #include <cmath>
 
@@ -11,18 +12,22 @@
 //
 // http://levien.com/ladder.pdf
 
-struct Matrix
+template<std::size_t r, std::size_t c>
+class Matrix
 {
+public:
     using size_t = std::size_t;
-    Matrix(const Matrix &m)
-        :data(m.data), r(m.r), c(m.c)
+    Matrix(const Matrix<r, c> &m)
+        :data(m.data)
     {}
-    Matrix(std::vector<float> dat, size_t _r, size_t _c)
-        :data(dat), r(_r), c(_c)
-    {}
-    Matrix(size_t _r, size_t _c)
-        :data(_r*_c, 0), r(_r), c(_c)
-    {}
+    Matrix(std::array<float, r*c> dat)
+            :data(dat)
+        {}
+    Matrix()
+    {
+        std::fill(data.begin(), data.end(), 0.f);
+    }
+
     float &operator()(size_t _r, size_t _c)
     {
         assert(_r < r);
@@ -39,13 +44,14 @@ struct Matrix
         assert(_c >= 0);
         return data[_r*c+_c];
     }
-    Matrix operator*(const Matrix &b)
+
+    template<size_t rhsC>
+    Matrix<r, rhsC> operator*(const Matrix<c, rhsC> &b)
     {
         Matrix &a = *this;
-        assert(a.c == b.r);
-        Matrix next(a.r,b.c);
-        for(size_t i=0; i<next.r; ++i) {
-            for(size_t j=0; j<next.c; ++j) {
+        Matrix<r, rhsC> next;
+        for(size_t i=0; i<r; ++i) {
+            for(size_t j=0; j<rhsC; ++j) {
                 for(size_t k=0; k<r; ++k) {
                     next(i,j) += a(i,k)*b(k,j);
                 }
@@ -56,7 +62,7 @@ struct Matrix
     Matrix operator*(float b)
     {
         Matrix &a = *this;
-        Matrix next(r,c);
+        Matrix next;
         for(size_t i=0; i<r; ++i) {
             for(size_t j=0; j<c; ++j) {
                 next(i,j) = a(i,j)*b;
@@ -68,8 +74,6 @@ struct Matrix
     Matrix &operator+=(const Matrix &b)
     {
         Matrix &a = *this;
-        assert(a.c == b.c);
-        assert(a.r == b.r);
         for(size_t i=0; i<r; ++i)
             for(size_t j=0; j<c; ++j)
                 a(i,j) += b(i,j);
@@ -80,9 +84,7 @@ struct Matrix
     Matrix operator+(const Matrix &b)
     {
         Matrix &a = *this;
-        assert(a.c == b.c);
-        assert(a.r == b.r);
-        Matrix next(r,c);
+        Matrix next;
         for(size_t i=0; i<r; ++i)
             for(size_t j=0; j<c; ++j)
                 next(i,j) = a(i,j) + b(i,j);
@@ -90,24 +92,29 @@ struct Matrix
         return next;
     }
 
-    std::vector<float> data;
-    size_t r;
-    size_t c;
+    Matrix apply(float (*fptr)(float)) const
+    {
+        Matrix out;
+        for(size_t i=0; i<r*c; ++i)
+            out.data[i] = (*fptr)(data[i]);
+        return out;
+    }
+private:
+    std::array<float, r*c> data;
 };
 
-Matrix nle(const Matrix &m)
+template<std::size_t r, std::size_t c>
+Matrix<r, c> nle(const Matrix<r, c> &m)
 {
-    Matrix out(m.r, m.c);
-    for(Matrix::size_t i=0; i<m.r*m.c; ++i)
-        out.data[i] = tanhf(m.data[i]);
-    return out;
+    // encapsulate tanhf for the case it's a macro
+    return m.apply([](float x) -> float { return tanhf(x); });
 }
 
 struct moog_filter
 {
-    Matrix B;
-    Matrix C;
-    Matrix y;
+    Matrix<4, 1> B;
+    Matrix<4, 4> C;
+    Matrix<4, 1> y;
     float k;
 };
 
@@ -122,7 +129,7 @@ moog_filter make_filter(float alpha, float k, int N)
     float a = alpha / (1<<N);
     float b = 1-a;
 
-    std::vector<float> init = {
+    std::array<float, 25> init = {
         1, 0, 0, 0, 0,
         a, b, 0, 0, -k*a,
         0, a, b, 0, 0,
@@ -130,26 +137,27 @@ moog_filter make_filter(float alpha, float k, int N)
         0, 0, 0, a, b
     };
 
-    Matrix m(init, 5, 5);
+    Matrix<5,5> m(init);
     for(int i=0; i<N; ++i)
         m = m*m;
 
-    Matrix B(4,1), C(4,4);
+    Matrix<4,1> B;
+    Matrix<4,4> C;
 
-    for(Matrix::size_t i=0; i<4; ++i)
+    for(std::size_t i=0; i<4; ++i)
         B(i,0) = m(1+i,0);
     
-    for(Matrix::size_t i=0; i<4; ++i)
-        for(Matrix::size_t j=0; j<4; ++j)
+    for(std::size_t i=0; i<4; ++i)
+        for(std::size_t j=0; j<4; ++j)
             C(i,j) = m(1+i,1+j);
 
-    for(Matrix::size_t i=0; i<4; ++i)
+    for(std::size_t i=0; i<4; ++i)
         C(i,i) -= 1;
     
-    for(Matrix::size_t i=0; i<4; ++i)
+    for(std::size_t i=0; i<4; ++i)
         C(i,i) += k*B(i,0);
 
-    return moog_filter{B, C, Matrix(4,1), k};
+    return moog_filter{B, C, Matrix<4,1>(), k};
 }
 
 std::vector<float> impulse_response(float alpha, float k)
@@ -186,7 +194,7 @@ MoogFilter::MoogFilter(float Ffreq, float Fq,
         unsigned int srate, int bufsize)
     :Filter(srate, bufsize), sr(srate), gain(1.0f)
 {
-    moog_filter *filter = new moog_filter{Matrix(4,1),Matrix(4,4),Matrix(4,1),0.0f};
+    moog_filter *filter = new moog_filter{Matrix<4,1>(),Matrix<4,4>(),Matrix<4,1>(),0.0f};
     *filter = make_filter(Ffreq/srate, Fq, 10);
     data = filter;
 
@@ -211,7 +219,7 @@ void MoogFilter::setfreq(float frequency)
 void MoogFilter::setfreq_and_q(float frequency, float q_)
 {
     moog_filter *old_filter = (moog_filter*)data;
-    moog_filter *new_filter = new moog_filter{Matrix(4,1),Matrix(4,4),Matrix(4,1),0.0f};
+    moog_filter *new_filter = new moog_filter{Matrix<4,1>(),Matrix<4,4>(),Matrix<4,1>(),0.0f};
     *new_filter = make_filter(frequency*3.0f/sr, q_/4.0f, 10);
     new_filter->y = old_filter->y;
     delete old_filter;
