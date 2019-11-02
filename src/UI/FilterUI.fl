@@ -184,6 +184,10 @@ delete (formantparswindow);} {}
             label StVarF
             xywh {70 70 100 20} labelfont 1 labelsize 10
           }
+          MenuItem {} {
+            label Moog
+            xywh {80 80 100 20} labelfont 1 labelsize 10
+          }
         }
         Fl_Dial cfreqdial {
           label {C.Freq}
@@ -455,7 +459,7 @@ if (Pcategory==2) svfiltertypechoice->value(Ptype);
 if (Pcategory==0) analogfiltertypechoice->value(Ptype);
 
 const int categ=Pcategory;
-if ((categ==0)||(categ==2)) {
+if ((categ==0)||(categ==2)||(categ==3)) {
 	if (categ==0) {
            analogfiltertypechoice->show();
            svfiltertypechoice->hide();
