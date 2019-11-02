@@ -13,16 +13,17 @@
 
 struct Matrix
 {
+    using size_t = std::size_t;
     Matrix(const Matrix &m)
         :data(m.data), r(m.r), c(m.c)
     {}
-    Matrix(std::vector<float> dat, int _r, int _c)
+    Matrix(std::vector<float> dat, size_t _r, size_t _c)
         :data(dat), r(_r), c(_c)
     {}
-    Matrix(int _r, int _c)
+    Matrix(size_t _r, size_t _c)
         :data(_r*_c, 0), r(_r), c(_c)
     {}
-    float &operator()(int _r, int _c)
+    float &operator()(size_t _r, size_t _c)
     {
         assert(_r < r);
         assert(_c < c);
@@ -30,7 +31,7 @@ struct Matrix
         assert(_c >= 0);
         return data[_r*c+_c];
     }
-    const float &operator()(int _r, int _c) const
+    const float &operator()(size_t _r, size_t _c) const
     {
         assert(_r < r);
         assert(_c < c);
@@ -43,9 +44,9 @@ struct Matrix
         Matrix &a = *this;
         assert(a.c == b.r);
         Matrix next(a.r,b.c);
-        for(int i=0; i<next.r; ++i) {
-            for(int j=0; j<next.c; ++j) {
-                for(int k=0; k<r; ++k) {
+        for(size_t i=0; i<next.r; ++i) {
+            for(size_t j=0; j<next.c; ++j) {
+                for(size_t k=0; k<r; ++k) {
                     next(i,j) += a(i,k)*b(k,j);
                 }
             }
@@ -56,8 +57,8 @@ struct Matrix
     {
         Matrix &a = *this;
         Matrix next(r,c);
-        for(int i=0; i<r; ++i) {
-            for(int j=0; j<c; ++j) {
+        for(size_t i=0; i<r; ++i) {
+            for(size_t j=0; j<c; ++j) {
                 next(i,j) = a(i,j)*b;
             }
         }
@@ -69,8 +70,8 @@ struct Matrix
         Matrix &a = *this;
         assert(a.c == b.c);
         assert(a.r == b.r);
-        for(int i=0; i<r; ++i)
-            for(int j=0; j<c; ++j)
+        for(size_t i=0; i<r; ++i)
+            for(size_t j=0; j<c; ++j)
                 a(i,j) += b(i,j);
 
         return a;
@@ -82,22 +83,22 @@ struct Matrix
         assert(a.c == b.c);
         assert(a.r == b.r);
         Matrix next(r,c);
-        for(int i=0; i<r; ++i)
-            for(int j=0; j<c; ++j)
+        for(size_t i=0; i<r; ++i)
+            for(size_t j=0; j<c; ++j)
                 next(i,j) = a(i,j) + b(i,j);
 
         return next;
     }
 
     std::vector<float> data;
-    int r;
-    int c;
+    size_t r;
+    size_t c;
 };
 
 Matrix nle(const Matrix &m)
 {
     Matrix out(m.r, m.c);
-    for(int i=0; i<m.r*m.c; ++i)
+    for(Matrix::size_t i=0; i<m.r*m.c; ++i)
         out.data[i] = tanhf(m.data[i]);
     return out;
 }
@@ -135,17 +136,17 @@ moog_filter make_filter(float alpha, float k, int N)
 
     Matrix B(4,1), C(4,4);
 
-    for(int i=0; i<4; ++i)
+    for(Matrix::size_t i=0; i<4; ++i)
         B(i,0) = m(1+i,0);
     
-    for(int i=0; i<4; ++i)
-        for(int j=0; j<4; ++j)
+    for(Matrix::size_t i=0; i<4; ++i)
+        for(Matrix::size_t j=0; j<4; ++j)
             C(i,j) = m(1+i,1+j);
 
-    for(int i=0; i<4; ++i)
+    for(Matrix::size_t i=0; i<4; ++i)
         C(i,i) -= 1;
     
-    for(int i=0; i<4; ++i)
+    for(Matrix::size_t i=0; i<4; ++i)
         C(i,i) += k*B(i,0);
 
     return moog_filter{B, C, Matrix(4,1), k};
