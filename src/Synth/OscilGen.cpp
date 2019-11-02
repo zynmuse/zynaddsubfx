@@ -119,6 +119,7 @@ const rtosc::Ports OscilGen::non_realtime_ports = {
                 // fprintf(stderr, "sending '%p' of fft data\n", data);
                 d.chain(repath, "b", sizeof(fft_t*), &data);
                 o.pendingfreqs = data;
+                d.broadcast(d.loc, "i", phase);
             }
         }},
     //TODO update to rArray and test
@@ -145,6 +146,7 @@ const rtosc::Ports OscilGen::non_realtime_ports = {
                 // fprintf(stderr, "sending '%p' of fft data\n", data);
                 d.chain(repath, "b", sizeof(fft_t*), &data);
                 o.pendingfreqs = data;
+                d.broadcast(d.loc, "i", mag);
             }
         }},
     {"base-spectrum:", rProp(non-realtime) rDoc("Returns spectrum of base waveshape"),
@@ -793,7 +795,7 @@ void OscilGen::shiftharmonics(fft_t *freqs)
         }
     else
         for(int i = 0; i < synth.oscilsize / 2 - 1; ++i) {
-	    int oldh = i + ::abs(harmonicshift);
+        int oldh = i + ::abs(harmonicshift);
             if(oldh >= (synth.oscilsize / 2 - 1))
                 h = 0.0f;
             else {
@@ -1045,6 +1047,9 @@ short int OscilGen::get(float *smps, float freqHz, int resonance)
 
     fft_t *input = freqHz > 0.0f ? oscilFFTfreqs : pendingfreqs;
 
+    unsigned int realrnd = prng();
+    sprng(randseed);
+
     int outpos =
         (int)((RND * 2.0f
                - 1.0f) * synth.oscilsize_f * (Prand - 64.0f) / 64.0f);
@@ -1090,8 +1095,7 @@ short int OscilGen::get(float *smps, float freqHz, int resonance)
 
     //Harmonic Amplitude Randomness
     if((freqHz > 0.1f) && (!ADvsPAD)) {
-        unsigned int realrnd = prng();
-        sprng(randseed);
+
         float power     = Pamprandpower / 127.0f;
         float normalize = 1.0f / (1.2f - power);
         switch(Pamprandtype) {
@@ -1110,7 +1114,6 @@ short int OscilGen::get(float *smps, float freqHz, int resonance)
                                            * normalize;
                 break;
         }
-        sprng(realrnd + 1);
     }
 
     if((freqHz > 0.1f) && (resonance != 0))
@@ -1126,6 +1129,8 @@ short int OscilGen::get(float *smps, float freqHz, int resonance)
         for(int i = 0; i < synth.oscilsize; ++i)
             smps[i] *= 0.25f;                     //correct the amplitude
     }
+
+    sprng(realrnd + 1);
 
     if(Prand < 64)
         return outpos;
