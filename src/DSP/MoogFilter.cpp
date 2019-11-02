@@ -98,7 +98,7 @@ Matrix nle(const Matrix &m)
 {
     Matrix out(m.r, m.c);
     for(int i=0; i<m.r*m.c; ++i)
-        out.data[i] = tanh(m.data[i]);
+        out.data[i] = tanhf(m.data[i]);
     return out;
 }
 
@@ -112,7 +112,7 @@ struct moog_filter
 
 float step(moog_filter &mf, float x)
 {
-    mf.y += mf.B*tanh(x-mf.k*mf.y(3,0)) + mf.C*nle(mf.y);
+    mf.y += mf.B*tanhf(x-mf.k*mf.y(3,0)) + mf.C*nle(mf.y);
     return mf.y(3,0);
 }
 
