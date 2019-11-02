@@ -173,7 +173,7 @@ std::vector<float> impulse_response(float alpha, float k)
 
 //int main(int argc, const char **argv)
 //{
-//    std::vector<float> ir = impulse_response(0.01, 0.9);
+//    std::vector<float> ir = impulse_response(0.01f, 0.9f);
 //    for(int i=0; i<(int)ir.size(); ++i)
 //        printf("%d %f\n", i, ir[i]);
 //    return 0;
@@ -185,7 +185,7 @@ MoogFilter::MoogFilter(float Ffreq, float Fq,
         unsigned int srate, int bufsize)
     :Filter(srate, bufsize), sr(srate), gain(1.0f)
 {
-    moog_filter *filter = new moog_filter{Matrix(4,1),Matrix(4,4),Matrix(4,1),0.0};
+    moog_filter *filter = new moog_filter{Matrix(4,1),Matrix(4,4),Matrix(4,1),0.0f};
     *filter = make_filter(Ffreq/srate, Fq, 10);
     data = filter;
 
@@ -210,8 +210,8 @@ void MoogFilter::setfreq(float frequency)
 void MoogFilter::setfreq_and_q(float frequency, float q_)
 {
     moog_filter *old_filter = (moog_filter*)data;
-    moog_filter *new_filter = new moog_filter{Matrix(4,1),Matrix(4,4),Matrix(4,1),0.0};
-    *new_filter = make_filter(frequency*3.0/sr, q_/4.0, 10);
+    moog_filter *new_filter = new moog_filter{Matrix(4,1),Matrix(4,4),Matrix(4,1),0.0f};
+    *new_filter = make_filter(frequency*3.0f/sr, q_/4.0f, 10);
     new_filter->y = old_filter->y;
     delete old_filter;
     data = new_filter;
