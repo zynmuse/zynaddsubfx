@@ -22,17 +22,17 @@ class MoogFilter:public Filter
         MoogFilter(float Ffreq, float Fq,
                 unsigned char non_linear_element,
                 unsigned int srate, int bufsize);
-        ~MoogFilter();
+        ~MoogFilter() override;
         void filterout(float *smp) override;
-        void setfreq(float frequency) override;
+        void setfreq(float /*frequency*/) override;
         void setfreq_and_q(float frequency, float q_) override;
-        void setq(float q_) override;
+        void setq(float /*q_*/) override;
 
         void setgain(float dBgain) override;
     private:
-        void *data;
-        void *data_old;
-        int   sr;
+        struct moog_filter *data;
+        struct moog_filter *data_old;
+        unsigned sr;
         float gain;
 };
 

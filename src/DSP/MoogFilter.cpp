@@ -6,6 +6,7 @@
 
 #include "MoogFilter.h"
 
+namespace zyn{
 
 // ``A matrix approach to the Moog ladder filter'',
 // Raph Levien 2013
@@ -17,9 +18,8 @@ class Matrix
 {
 public:
     using size_t = std::size_t;
-    Matrix(const Matrix<r, c> &m)
-        :data(m.data)
-    {}
+    Matrix(const Matrix<r, c> &m) = default;
+    Matrix(Matrix<r, c> &m) = default;
     Matrix(std::array<float, r*c> dat)
             :data(dat)
         {}
@@ -27,6 +27,8 @@ public:
     {
         std::fill(data.begin(), data.end(), 0.f);
     }
+    Matrix& operator=(const Matrix<r, c> &m) = default;
+    Matrix& operator=(Matrix<r, c>&& m) = default;
 
     float &operator()(size_t _r, size_t _c)
     {
@@ -188,12 +190,13 @@ std::vector<float> impulse_response(float alpha, float k)
 //    return 0;
 //}
 
-namespace zyn{
 MoogFilter::MoogFilter(float Ffreq, float Fq,
         unsigned char non_linear_element,
         unsigned int srate, int bufsize)
     :Filter(srate, bufsize), sr(srate), gain(1.0f)
 {
+    (void) non_linear_element; // TODO
+
     moog_filter *filter = new moog_filter{Matrix<4,1>(),Matrix<4,4>(),Matrix<4,1>(),0.0f};
     *filter = make_filter(Ffreq/srate, Fq, 10);
     data = filter;
@@ -202,23 +205,23 @@ MoogFilter::MoogFilter(float Ffreq, float Fq,
 
 MoogFilter::~MoogFilter(void)
 {
-    moog_filter *filter = (moog_filter*)data;
-    delete filter;
+    delete data;
 }
 void MoogFilter::filterout(float *smp)
 {
-    moog_filter *filter = (moog_filter*)data;
+    moog_filter *filter = data;
     for(int i=0; i<buffersize; ++i)
-        smp[i] = ::step(*filter, gain*smp[i]);
+        smp[i] = zyn::step(*filter, gain*smp[i]);
 }
-void MoogFilter::setfreq(float frequency)
+void MoogFilter::setfreq(float /*frequency*/)
 {
     //Dummy
 }
 
 void MoogFilter::setfreq_and_q(float frequency, float q_)
 {
-    moog_filter *old_filter = (moog_filter*)data;
+    // TODO: avoid allocation?
+    moog_filter *old_filter = data;
     moog_filter *new_filter = new moog_filter{Matrix<4,1>(),Matrix<4,4>(),Matrix<4,1>(),0.0f};
     *new_filter = make_filter(frequency*3.0f/sr, q_/4.0f, 10);
     new_filter->y = old_filter->y;
@@ -226,7 +229,7 @@ void MoogFilter::setfreq_and_q(float frequency, float q_)
     data = new_filter;
 }
 
-void MoogFilter::setq(float q_)
+void MoogFilter::setq(float /*q_*/)
 {
 }
 
