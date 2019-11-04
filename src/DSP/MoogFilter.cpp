@@ -3,6 +3,7 @@
 #include <array>
 #include <vector>
 #include <cmath>
+#include <iostream>
 
 #include "MoogFilter.h"
 
@@ -13,24 +14,24 @@ namespace zyn{
 //
 // http://levien.com/ladder.pdf
 
-template<std::size_t r, std::size_t c>
+template<class T, std::size_t r, std::size_t c>
 class Matrix
 {
 public:
     using size_t = std::size_t;
-    Matrix(const Matrix<r, c> &m) = default;
-    Matrix(Matrix<r, c> &m) = default;
-    Matrix(std::array<float, r*c> dat)
+    Matrix(const Matrix<T, r, c> &m) = default;
+    Matrix(Matrix<T, r, c> &m) = default;
+    Matrix(std::array<T, r*c> dat)
             :data(dat)
         {}
     Matrix()
     {
         std::fill(data.begin(), data.end(), 0.f);
     }
-    Matrix& operator=(const Matrix<r, c> &m) = default;
-    Matrix& operator=(Matrix<r, c>&& m) = default;
+    Matrix& operator=(const Matrix<T, r, c> &m) = default;
+    Matrix& operator=(Matrix<T, r, c>&& m) = default;
 
-    float &operator()(size_t _r, size_t _c)
+    T &operator()(size_t _r, size_t _c)
     {
         assert(_r < r);
         assert(_c < c);
@@ -38,7 +39,7 @@ public:
         assert(_c >= 0);
         return data[_r*c+_c];
     }
-    const float &operator()(size_t _r, size_t _c) const
+    const T &operator()(size_t _r, size_t _c) const
     {
         assert(_r < r);
         assert(_c < c);
@@ -48,10 +49,10 @@ public:
     }
 
     template<size_t rhsC>
-    Matrix<r, rhsC> operator*(const Matrix<c, rhsC> &b)
+    Matrix<T, r, rhsC> operator*(const Matrix<T, c, rhsC> &b) const
     {
-        Matrix &a = *this;
-        Matrix<r, rhsC> next;
+        const Matrix &a = *this;
+        Matrix<T, r, rhsC> next;
         for(size_t i=0; i<r; ++i) {
             for(size_t j=0; j<rhsC; ++j) {
                 for(size_t k=0; k<r; ++k) {
@@ -61,7 +62,7 @@ public:
         }
         return next;
     }
-    Matrix operator*(float b)
+    Matrix operator*(T b)
     {
         Matrix &a = *this;
         Matrix next;
@@ -83,9 +84,9 @@ public:
         return a;
     }
 
-    Matrix operator+(const Matrix &b)
+    Matrix operator+(const Matrix &b) const
     {
-        Matrix &a = *this;
+        const Matrix &a = *this;
         Matrix next;
         for(size_t i=0; i<r; ++i)
             for(size_t j=0; j<c; ++j)
@@ -94,19 +95,42 @@ public:
         return next;
     }
 
-    Matrix apply(float (*fptr)(float)) const
+    Matrix apply(T (*fptr)(T)) const
     {
         Matrix out;
         for(size_t i=0; i<r*c; ++i)
             out.data[i] = (*fptr)(data[i]);
         return out;
     }
+
+    bool operator==(const Matrix& rhs) const
+    {
+        return data == rhs.data;
+    }
+
 private:
-    std::array<float, r*c> data;
+
+    std::array<T, r*c> data;
 };
 
-template<std::size_t r, std::size_t c>
-Matrix<r, c> nle(const Matrix<r, c> &m)
+template<class T, std::size_t r, std::size_t c>
+std::ostream& operator<<(std::ostream& stream, const Matrix<T,r,c>& m)
+{
+    for(size_t i=0; i<r; ++i)
+    {
+        for(size_t j=0; j<c; ++j)
+        {
+            stream << m(i, j);
+            if(j != c-1)
+                stream << "  ";
+        }
+        stream << std::endl;
+    }
+    return stream;
+}
+
+template<class T, std::size_t r, std::size_t c>
+Matrix<T, r, c> nle(const Matrix<T, r, c> &m)
 {
     // encapsulate tanhf for the case it's a macro
     return m.apply([](float x) -> float { return tanhf(x); });
@@ -114,9 +138,9 @@ Matrix<r, c> nle(const Matrix<r, c> &m)
 
 struct moog_filter
 {
-    Matrix<4, 1> B;
-    Matrix<4, 4> C;
-    Matrix<4, 1> y;
+    Matrix<float, 4, 1> B;
+    Matrix<float, 4, 4> C;
+    Matrix<float, 4, 1> y;
     float k;
 };
 
@@ -139,12 +163,12 @@ moog_filter make_filter(float alpha, float k, int N)
         0, 0, 0, a, b
     };
 
-    Matrix<5,5> m(init);
+    Matrix<float, 5,5> m(init);
     for(int i=0; i<N; ++i)
         m = m*m;
 
-    Matrix<4,1> B;
-    Matrix<4,4> C;
+    Matrix<float, 4,1> B;
+    Matrix<float, 4,4> C;
 
     for(std::size_t i=0; i<4; ++i)
         B(i,0) = m(1+i,0);
@@ -155,11 +179,11 @@ moog_filter make_filter(float alpha, float k, int N)
 
     for(std::size_t i=0; i<4; ++i)
         C(i,i) -= 1;
-    
+
     for(std::size_t i=0; i<4; ++i)
         C(i,i) += k*B(i,0);
 
-    return moog_filter{B, C, Matrix<4,1>(), k};
+    return moog_filter{B, C, Matrix<float, 4,1>(), k};
 }
 
 std::vector<float> impulse_response(float alpha, float k)
@@ -197,7 +221,7 @@ MoogFilter::MoogFilter(float Ffreq, float Fq,
 {
     (void) non_linear_element; // TODO
 
-    moog_filter *filter = new moog_filter{Matrix<4,1>(),Matrix<4,4>(),Matrix<4,1>(),0.0f};
+    moog_filter *filter = new moog_filter{Matrix<float,4,1>(),Matrix<float,4,4>(),Matrix<float,4,1>(),0.0f};
     *filter = make_filter(Ffreq/srate, Fq, 10);
     data = filter;
 
@@ -222,7 +246,7 @@ void MoogFilter::setfreq_and_q(float frequency, float q_)
 {
     // TODO: avoid allocation?
     moog_filter *old_filter = data;
-    moog_filter *new_filter = new moog_filter{Matrix<4,1>(),Matrix<4,4>(),Matrix<4,1>(),0.0f};
+    moog_filter *new_filter = new moog_filter{Matrix<float,4,1>(),Matrix<float,4,4>(),Matrix<float,4,1>(),0.0f};
     *new_filter = make_filter(frequency*3.0f/sr, q_/4.0f, 10);
     new_filter->y = old_filter->y;
     delete old_filter;
