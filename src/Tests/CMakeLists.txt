@@ -43,7 +43,6 @@ set(test_lib zynaddsubfx_core ${GUI_LIBRARIES} ${ZLIB_LIBRARY} ${FFTW_LIBRARIES}
 message(STATUS "Linking tests with: ${test_lib}")
 target_link_libraries(ADnoteTest     ${test_lib})
 target_link_libraries(SUBnoteTest    ${test_lib})
-target_link_libraries(MatrixTest ${test_lib}) # TODO: remove?
 target_link_libraries(ControllerTest ${test_lib})
 target_link_libraries(EchoTest       ${test_lib})
 target_link_libraries(MicrotonalTest ${test_lib})

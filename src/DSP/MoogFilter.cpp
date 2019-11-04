@@ -1,10 +1,8 @@
-#include <cassert>
 #include <cstdio>
-#include <array>
 #include <vector>
 #include <cmath>
-#include <iostream>
 
+#include "../Misc/Matrix.h"
 #include "MoogFilter.h"
 
 namespace zyn{
@@ -13,121 +11,6 @@ namespace zyn{
 // Raph Levien 2013
 //
 // http://levien.com/ladder.pdf
-
-template<class T, std::size_t r, std::size_t c>
-class Matrix
-{
-public:
-    using size_t = std::size_t;
-    Matrix(const Matrix<T, r, c> &m) = default;
-    Matrix(Matrix<T, r, c> &m) = default;
-    Matrix(std::array<T, r*c> dat)
-            :data(dat)
-        {}
-    Matrix()
-    {
-        std::fill(data.begin(), data.end(), 0.f);
-    }
-    Matrix& operator=(const Matrix<T, r, c> &m) = default;
-    Matrix& operator=(Matrix<T, r, c>&& m) = default;
-
-    T &operator()(size_t _r, size_t _c)
-    {
-        assert(_r < r);
-        assert(_c < c);
-        assert(_r >= 0);
-        assert(_c >= 0);
-        return data[_r*c+_c];
-    }
-    const T &operator()(size_t _r, size_t _c) const
-    {
-        assert(_r < r);
-        assert(_c < c);
-        assert(_r >= 0);
-        assert(_c >= 0);
-        return data[_r*c+_c];
-    }
-
-    template<size_t rhsC>
-    Matrix<T, r, rhsC> operator*(const Matrix<T, c, rhsC> &b) const
-    {
-        const Matrix &a = *this;
-        Matrix<T, r, rhsC> next;
-        for(size_t i=0; i<r; ++i) {
-            for(size_t j=0; j<rhsC; ++j) {
-                for(size_t k=0; k<r; ++k) {
-                    next(i,j) += a(i,k)*b(k,j);
-                }
-            }
-        }
-        return next;
-    }
-    Matrix operator*(T b)
-    {
-        Matrix &a = *this;
-        Matrix next;
-        for(size_t i=0; i<r; ++i) {
-            for(size_t j=0; j<c; ++j) {
-                next(i,j) = a(i,j)*b;
-            }
-        }
-        return next;
-    }
-    
-    Matrix &operator+=(const Matrix &b)
-    {
-        Matrix &a = *this;
-        for(size_t i=0; i<r; ++i)
-            for(size_t j=0; j<c; ++j)
-                a(i,j) += b(i,j);
-
-        return a;
-    }
-
-    Matrix operator+(const Matrix &b) const
-    {
-        const Matrix &a = *this;
-        Matrix next;
-        for(size_t i=0; i<r; ++i)
-            for(size_t j=0; j<c; ++j)
-                next(i,j) = a(i,j) + b(i,j);
-
-        return next;
-    }
-
-    Matrix apply(T (*fptr)(T)) const
-    {
-        Matrix out;
-        for(size_t i=0; i<r*c; ++i)
-            out.data[i] = (*fptr)(data[i]);
-        return out;
-    }
-
-    bool operator==(const Matrix& rhs) const
-    {
-        return data == rhs.data;
-    }
-
-private:
-
-    std::array<T, r*c> data;
-};
-
-template<class T, std::size_t r, std::size_t c>
-std::ostream& operator<<(std::ostream& stream, const Matrix<T,r,c>& m)
-{
-    for(size_t i=0; i<r; ++i)
-    {
-        for(size_t j=0; j<c; ++j)
-        {
-            stream << m(i, j);
-            if(j != c-1)
-                stream << "  ";
-        }
-        stream << std::endl;
-    }
-    return stream;
-}
 
 template<class T, std::size_t r, std::size_t c>
 Matrix<T, r, c> nle(const Matrix<T, r, c> &m)

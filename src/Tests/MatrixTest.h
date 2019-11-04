@@ -12,7 +12,7 @@
 */
 #include <cxxtest/TestSuite.h>
 
-#include "../DSP/MoogFilter.cpp"
+#include "../Misc/Matrix.h"
 
 class MatrixTest:public CxxTest::TestSuite
 {
