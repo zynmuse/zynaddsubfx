@@ -116,6 +116,16 @@ public:
         return data == rhs.data;
     }
 
+    //! Check if every value in other differs at most @p delta
+    bool equals(const Matrix& other, const T& delta)
+    {
+        const T absDelta = fabs(delta);
+        bool equal = true;
+        for(size_t i=0; equal && i<r*c; ++i)
+            equal = fabs(data[i] - other.data[i]) < absDelta;
+        return equal;
+    }
+
 private:
     std::array<T, r*c> data;
 };

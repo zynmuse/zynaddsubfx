@@ -50,6 +50,21 @@ class MatrixTest:public CxxTest::TestSuite
             TS_ASSERT_EQUALS(mobile.apply(func), exp)
         }
 
+        void testEquals()
+        {
+            std::array<float, 2> aIn = { 1.25f, 3.47f };
+            std::array<float, 2> aCmp1 = { 1.24f, 3.48f };
+            std::array<float, 2> aCmp2 = { 1.28f, 3.47f };
+            zyn::Matrix <float, 1, 2> in (aIn);
+            zyn::Matrix <float, 1, 2> cmp1 = aCmp1;
+            zyn::Matrix <float, 1, 2> cmp2 = aCmp2;
+
+            bool res1 = in.equals(cmp1, 0.02f);
+            bool res2 = in.equals(cmp2, 0.02f);
+            TS_ASSERT_EQUALS(res1, true)
+            TS_ASSERT_EQUALS(res2, false)
+        }
+
     private:
         using base_t = long long int;
         template<std::size_t N>
