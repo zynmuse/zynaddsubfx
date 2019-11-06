@@ -19,8 +19,9 @@ namespace zyn {
 class MoogFilter:public Filter
 {
     public:
+        //! @param Fq resonance, range [0.1,1000], logscale
         MoogFilter(float Ffreq, float Fq,
-                unsigned char non_linear_element,
+                unsigned char non_linear_element /* currently set by "stages" */,
                 unsigned int srate, int bufsize);
         ~MoogFilter() override;
         void filterout(float *smp) override;
