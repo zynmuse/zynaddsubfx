@@ -72,15 +72,15 @@ class MatrixTest:public CxxTest::TestSuite
         template<std::size_t r, std::size_t c>
         using Matrix = zyn::Matrix<base_t, r, c>;
 
-        const array_t<9> aMobile = {
+        const array_t<9> aMobile = {{
           1, 2, 3,
           4, 5, 6,
-          7, 8, 9 };
+          7, 8, 9 }};
 
-        const array_t<9> aId3 = {
+        const array_t<9> aId3 = {{
           1, 0, 0,
           0, 1, 0,
-          0, 0, 1 };
+          0, 0, 1 }};
 
 };
 
