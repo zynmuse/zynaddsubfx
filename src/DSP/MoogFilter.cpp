@@ -97,17 +97,24 @@ std::vector<float> impulse_response(float alpha, float k)
 //    return 0;
 //}
 
+// revert parameters from "baseq" calculation (FilterParams.cpp)
+// output shall be linear to the Pq parameter from FilterParams
+static float mapQ(float input)
+{
+    // "* 2.0": Adding more distortion than 1.0 makes interesting
+    //          effects and just sounds good
+    return powf(logf(input + .9f) / logf(1000.f), 1.f/2.f) * 2.0f;
+}
+
 MoogFilter::MoogFilter(float Ffreq, float Fq,
         unsigned char non_linear_element,
         unsigned int srate, int bufsize)
     :Filter(srate, bufsize), sr(srate), gain(1.0f)
 {
-    (void) non_linear_element; // TODO
-
+    (void) non_linear_element;
     moog_filter *filter = new moog_filter{Matrix<float,4,1>(),Matrix<float,4,4>(),Matrix<float,4,1>(),0.0f};
-    *filter = make_filter(Ffreq/srate, Fq, 10);
+    *filter = make_filter(Ffreq/srate, mapQ(Fq), 10);
     data = filter;
-
 }
 
 MoogFilter::~MoogFilter(void)
@@ -130,7 +137,7 @@ void MoogFilter::setfreq_and_q(float frequency, float q_)
     // TODO: avoid allocation?
     moog_filter *old_filter = data;
     moog_filter *new_filter = new moog_filter{Matrix<float,4,1>(),Matrix<float,4,4>(),Matrix<float,4,1>(),0.0f};
-    *new_filter = make_filter(frequency*3.0f/sr, q_/4.0f, 10);
+    *new_filter = make_filter(frequency*3.0f/sr, mapQ(q_), 10);
     new_filter->y = old_filter->y;
     delete old_filter;
     data = new_filter;
