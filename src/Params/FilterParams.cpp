@@ -306,7 +306,7 @@ const rtosc::Ports FilterParams::ports = {
             FilterParams *obj = (FilterParams*)d.obj;
             if(rtosc_narguments(msg)) {
                 int Pq = rtosc_argument(msg, 0).i;
-                obj->baseq  = expf(powf((float) Pq / 127.0f, 2) * logf(1000.0f)) - 0.9f;
+                obj->baseq = pqToBaseQ(Pq);
                 rChangeCb;
                 d.broadcast(d.loc, "i", Pq);
             } else {
@@ -381,7 +381,7 @@ void FilterParams::defaults()
     Pstages       = 0;
     basefreq  = (Pfreq / 64.0f - 1.0f) * 5.0f;
     basefreq  = powf(2.0f, basefreq + 9.96578428f);
-    baseq     = expf(powf((float) Pq / 127.0f, 2) * logf(1000.0f)) - 0.9f;
+    baseq     = pqToBaseQ(Pq);
 
     gain = 0.0f;
     freqtracking = 0.0f;
@@ -414,6 +414,11 @@ void FilterParams::defaults(int n)
         Pvowels[j].formants[i].q    = 64;
         Pvowels[j].formants[i].amp  = 127;
     }
+}
+
+float FilterParams::pqToBaseQ(float pqValue)
+{
+    return expf(powf((float) pqValue / 127.0f, 2) * logf(1000.0f)) - 0.9f;
 }
 
 
@@ -618,7 +623,7 @@ void FilterParams::getfromXML(XMLwrapper& xml)
         basefreq  = (Pfreq / 64.0f - 1.0f) * 5.0f;
         basefreq  = powf(2.0f, basefreq + 9.96578428f);
         int Pq    = xml.getpar127("q", 0);
-        baseq     = expf(powf((float) Pq / 127.0f, 2) * logf(1000.0f)) - 0.9f;
+        baseq     = pqToBaseQ(Pq);
         int Pgain = xml.getpar127("gain", 0);
         gain      = (Pgain / 64.0f - 1.0f) * 30.0f; //-30..30dB
         int Pfreqtracking = xml.getpar127("freq_track", 0);
