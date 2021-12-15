@@ -10,5 +10,6 @@ set(zynaddsubfx_effect_SRCS
 	Effects/EQ.cpp
 	Effects/Phaser.cpp
 	Effects/Reverb.cpp
+	Effects/Granular.cpp
     PARENT_SCOPE
 )

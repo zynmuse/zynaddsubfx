@@ -608,6 +608,10 @@ syseffectui->refresh();}
                 label DynFilter
                 xywh {95 95 100 20} labelfont 1 labelsize 10
               }
+              MenuItem {} {
+                label Granular
+                xywh {105 105 100 20} labelfont 1 labelsize 10
+              }
             }
             Fl_Group syseffectuigroup {
               xywh {5 203 380 95} color 48
@@ -717,6 +721,10 @@ inseffectui->show();}
               MenuItem {} {
                 label DynFilter
                 xywh {105 105 100 20} labelfont 1 labelsize 10
+              }
+              MenuItem {} {
+                label Granular
+                xywh {115 115 100 20} labelfont 1 labelsize 10
               }
             }
             Fl_Group inseffectuigroup {open
@@ -1271,6 +1279,10 @@ simplesyseffectui->refresh();
                 label DynFilter
                 xywh {100 100 100 20} labelfont 1 labelsize 10
               }
+              MenuItem {} {
+                label Granular
+                xywh {110 110 100 20} labelfont 1 labelsize 10
+              }
             }
             Fl_Group simplesyseffectuigroup {
               xywh {350 95 235 95} color 48
@@ -1376,6 +1388,10 @@ simpleinseffectui->show();}
               MenuItem {} {
                 label DynFilter
                 xywh {110 110 100 20} labelfont 1 labelsize 10
+              }
+              MenuItem {} {
+                label Granular
+                xywh {120 120 100 20} labelfont 1 labelsize 10
               }
             }
             Fl_Group simpleinseffectuigroup {

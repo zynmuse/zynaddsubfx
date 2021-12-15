@@ -119,7 +119,7 @@ bool JackMultiEngine::Start(void)
     if(synth.samplerate != jack_get_sample_rate(impl->client))
         errx(1, "jack must have the same sample rate!");
     if(synth.buffersize != (int) jack_get_buffer_size(impl->client))
-        errx(1, "jack must have the same buffer size");
+        errx(1, "jack must have the same buffer size zyn=%d jack=%d",synth.buffersize, jack_get_buffer_size(impl->client));
 
     jack_set_process_callback(impl->client, _processCallback, this);
 

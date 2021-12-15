@@ -699,6 +699,10 @@ inseffectui->refresh();}
           label DynFilter
           xywh {110 110 100 20} labelfont 1 labelsize 10
         }
+        MenuItem {} {
+          label Granular
+          xywh {120 120 100 20} labelfont 1 labelsize 10
+        }
       }
       Fl_Group inseffectuigroup {
         xywh {5 5 380 100} box FLAT_BOX color 48

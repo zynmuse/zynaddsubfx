@@ -20,6 +20,7 @@
 #include "Effect.h"
 #include "Alienwah.h"
 #include "Reverb.h"
+#include "Granular.h"
 #include "Echo.h"
 #include "Chorus.h"
 #include "Distorsion.h"
@@ -153,6 +154,7 @@ static const rtosc::Ports local_ports = {
                                 eff->seteffectparrt(2, Pfreq);
                             break;
                         case 1: // Reverb
+                        case 9: // Granular
                         case 6: // Distorsion
                         case 7: // EQ
                         default:
@@ -200,6 +202,7 @@ static const rtosc::Ports local_ports = {
                                 eff->seteffectparrt(2, Pfreq);
                             break;
                         case 1: // Reverb
+                        case 9: // Granular
                         case 6: // Distorsion
                         case 7: // EQ
                         default:
@@ -227,7 +230,7 @@ static const rtosc::Ports local_ports = {
             d.reply(d.loc, "bb", sizeof(a), a, sizeof(b), b);
         }},
     {"efftype::i:c:S", rOptions(Disabled, Reverb, Echo, Chorus,
-     Phaser, Alienwah, Distortion, EQ, DynFilter) rDefault(Disabled)
+     Phaser, Alienwah, Distortion, EQ, DynFilter, Granular) rDefault(Disabled)
      rProp(parameter) rDoc("Get Effect Type"), NULL,
      rCOptionCb(obj->nefx, obj->changeeffectrt(var))},
     {"efftype:b", rProp(internal) rDoc("Pointer swap EffectMgr"), NULL,
@@ -255,6 +258,7 @@ static const rtosc::Ports local_ports = {
     rSubtype(EQ),
     rSubtype(Phaser),
     rSubtype(Reverb),
+    rSubtype(Granular),
 };
 
 const rtosc::Ports &EffectMgr::ports = local_ports;
@@ -336,6 +340,9 @@ void EffectMgr::changeeffectrt(int _nefx, bool avoidSmash)
                 efx = memory.alloc<DynamicFilter>(pars);
                 break;
             //put more effect here
+            case 9:
+                efx = memory.alloc<Granular>(pars);
+                break;
             default:
                 efx = NULL;
                 break; //no effect (thru)
@@ -368,6 +375,7 @@ void EffectMgr::changeeffectrt(int _nefx, bool avoidSmash)
                         seteffectparrt(2, Pfreq);
                     break;
                 case 1: // Reverb
+                case 9: // Granular
                 case 6: // Distorsion
                 case 7: // EQ
                 default:
