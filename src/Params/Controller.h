@@ -34,20 +34,32 @@ class Controller
 
         //Controllers functions
         void setpitchwheel(int value);
+        void setpitchwheel(void);
         void setexpression(int value);
+        void setexpression(void);
         void setpanning(int value);
+        void setpanning(void);
         void setfiltercutoff(int value);
+        void setfiltercutoff(void);
         void setfilterq(int value);
+        void setfilterq(void);
         void setbandwidth(int value);
+        void setbandwidth(void);
         void setmodwheel(int value);
+        void setmodwheel(void);
         void setfmamp(int value);
+        void setfmamp(void);
         void setvolume(int value);
+        void setvolume(void);
         void setsustain(int value);
+        void setsustain(void);
         /**Enable or disable portamento
          * @param value 0-127 MIDI value (greater than 64 enables)*/
         void setportamento(int value);
         void setresonancecenter(int value);
+        void setresonancecenter(void);
         void setresonancebw(int value);
+        void setresonancebw(void);
 
 
         void setparameternumber(unsigned int type, int value); //used for RPN and NRPN's
