@@ -71,7 +71,7 @@ effechowindow->hide();//delete (effechowindow);
 effchoruswindow->hide();//delete (effchoruswindow);
 effphaserwindow->hide();//delete (effphaserwindow);
 effalienwahwindow->hide();//delete (effalienwahwindow);
-effdistorsionwindow->hide();//delete (effdistorsionwindow);
+effdistortionwindow->hide();//delete (effdistortionwindow);
 effeqwindow->hide();//delete (effeqwindow);
 effdynamicfilterwindow->hide();//delete (effdynamicfilterwindow);
 effgranularwindow->hide();//delete (effgranularwindow);
@@ -895,8 +895,8 @@ if (filterwindow!=NULL){
       }
     }
   }
-  Function {make_distorsion_window()} {} {
-    Fl_Window effdistorsionwindow {
+  Function {make_distortion_window()} {} {
+    Fl_Window effdistortionwindow {
       xywh {553 286 380 100} type Double box UP_BOX color 221 labelfont 1 labelsize 19
       code0 {set_module_parameters(o);}
       class Fl_Group visible
@@ -1075,7 +1075,7 @@ if (filterwindow!=NULL){
       }
       Fl_Check_Button distp10 {
         label PF
-        tooltip {Applies the filters(before or after) the distorsion} xywh {355 44 15 15} down_box DOWN_BOX labelfont 1 labelsize 11 align 1
+        tooltip {Applies the filters(before or after) the distortion} xywh {355 44 15 15} down_box DOWN_BOX labelfont 1 labelsize 11 align 1
         code0 {o->init("parameter10");}
         class Fl_Osc_Check
       }
@@ -1343,7 +1343,7 @@ make_echo_window();
 make_chorus_window();
 make_phaser_window();
 make_alienwah_window();
-make_distorsion_window();
+make_distortion_window();
 make_eq_window();
 make_dynamicfilter_window();
 make_granular_window();
@@ -1357,7 +1357,7 @@ effechowindow->position(px,py);
 effchoruswindow->position(px,py);
 effphaserwindow->position(px,py);
 effalienwahwindow->position(px,py);
-effdistorsionwindow->position(px,py);
+effdistortionwindow->position(px,py);
 effeqwindow->position(px,py);
 effdynamicfilterwindow->position(px,py);
 effgranularwindow->position(px,py);
@@ -1376,7 +1376,7 @@ effechowindow->hide();
 effchoruswindow->hide();
 effphaserwindow->hide();
 effalienwahwindow->hide();
-effdistorsionwindow->hide();
+effdistortionwindow->hide();
 effeqwindow->hide();
 effdynamicfilterwindow->hide();
 effgranularwindow->hide();
@@ -1417,7 +1417,7 @@ switch(efftype){
 	effalienwahwindow->show();
         break; 
      case 6:
-	effdistorsionwindow->show();
+	effdistortionwindow->show();
         break;
      case 7:eqband=0;
 	bandcounter->value(eqband);
@@ -1459,7 +1459,7 @@ effechowindow->hide();//delete (effechowindow);
 effchoruswindow->hide();//delete (effchoruswindow);
 effphaserwindow->hide();//delete (effphaserwindow);
 effalienwahwindow->hide();//delete (effalienwahwindow);
-effdistorsionwindow->hide();//delete (effdistorsionwindow);
+effdistortionwindow->hide();//delete (effdistortionwindow);
 effeqwindow->hide();//delete (effeqwindow);
 effdynamicfilterwindow->hide();//delete (effdynamicfilterwindow);
 effgranularwindow->hide();//delete (effgranularwindow);} {}
@@ -1945,8 +1945,8 @@ effgranularwindow->hide();//delete (effgranularwindow);} {}
       }
     }
   }
-  Function {make_distorsion_window()} {} {
-    Fl_Window effdistorsionwindow {
+  Function {make_distortion_window()} {} {
+    Fl_Window effdistortionwindow {
       xywh {88 881 230 100} type Double box UP_BOX color 51 labelfont 1 labelsize 19
       code3 {set_module_parameters(o);}
       class Fl_Group visible
@@ -2285,7 +2285,7 @@ make_echo_window();
 make_chorus_window();
 make_phaser_window();
 make_alienwah_window();
-make_distorsion_window();
+make_distortion_window();
 make_eq_window();
 make_dynamicfilter_window();
 make_granular_window();
@@ -2299,7 +2299,7 @@ effechowindow->position(px,py);
 effchoruswindow->position(px,py);
 effphaserwindow->position(px,py);
 effalienwahwindow->position(px,py);
-effdistorsionwindow->position(px,py);
+effdistortionwindow->position(px,py);
 effeqwindow->position(px,py);
 effdynamicfilterwindow->position(px,py);
 effgranularwindow->position(px,py);} {}
@@ -2317,7 +2317,7 @@ effechowindow->hide();
 effchoruswindow->hide();
 effphaserwindow->hide();
 effalienwahwindow->hide();
-effdistorsionwindow->hide();
+effdistortionwindow->hide();
 effeqwindow->hide();
 effdynamicfilterwindow->hide();
 effgranularwindow->hide();
@@ -2351,7 +2351,7 @@ switch(efftype){
 	effalienwahwindow->show();
         break; 
      case 6:
-	effdistorsionwindow->show();
+	effdistortionwindow->show();
         break;
      case 7:
 	bandcounter->value(eqband);
