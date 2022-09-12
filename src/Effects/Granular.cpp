@@ -19,7 +19,6 @@
 #include <cmath>
 #include <rtosc/ports.h>
 #include <rtosc/port-sugar.h>
-#include "RubberBandStretcher.h"
 namespace zyn {
 
 #define rObject Granular
