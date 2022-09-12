@@ -74,8 +74,8 @@ effalienwahwindow->hide();//delete (effalienwahwindow);
 effdistortionwindow->hide();//delete (effdistortionwindow);
 effeqwindow->hide();//delete (effeqwindow);
 effdynamicfilterwindow->hide();//delete (effdynamicfilterwindow);
-effsympatheticwindow->hide();//delete (effsympatheticwindow);
 effgranularwindow->hide();//delete (effgranularwindow);
+effsympatheticwindow->hide();//delete (effsympatheticwindow);
 
 if (filterwindow!=NULL){
     filterwindow->hide();
@@ -1404,8 +1404,8 @@ make_alienwah_window();
 make_distortion_window();
 make_eq_window();
 make_dynamicfilter_window();
-make_sympathetic_window();
 make_granular_window();
+make_sympathetic_window();
 
 int px=this->parent()->x();
 int py=this->parent()->y();
@@ -1419,8 +1419,8 @@ effalienwahwindow->position(px,py);
 effdistortionwindow->position(px,py);
 effeqwindow->position(px,py);
 effdynamicfilterwindow->position(px,py);
-effsympatheticwindow->position(px,py);
 effgranularwindow->position(px,py);
+effsympatheticwindow->position(px,py);
 
 refresh();} {}
   }
@@ -1439,8 +1439,8 @@ effalienwahwindow->hide();
 effdistortionwindow->hide();
 effeqwindow->hide();
 effdynamicfilterwindow->hide();
-effsympatheticwindow->hide();
 effgranularwindow->hide();
+effsympatheticwindow->hide();
 
 eqband=0;
 
@@ -1489,10 +1489,10 @@ switch(efftype){
      case 8:make_filter_window();
 	effdynamicfilterwindow->show();
 	break;
-      case 9:
+      case 10:
       effsympatheticwindow->show();
       break;
-      case 10:
+      case 9:
         effgranularwindow->show();
         break; 
    default:effnullwindow->show();
@@ -1525,8 +1525,8 @@ effalienwahwindow->hide();//delete (effalienwahwindow);
 effdistortionwindow->hide();//delete (effdistortionwindow);
 effeqwindow->hide();//delete (effeqwindow);
 effdynamicfilterwindow->hide();//delete (effdynamicfilterwindow);
-effsympatheticwindow->hide();//delete (effsympatheticwindow);
-effgranularwindow->hide();//delete (effgranularwindow);} {}
+effgranularwindow->hide();//delete (effgranularwindow);
+effsympatheticwindow->hide();//delete (effsympatheticwindow);} {}
   }
   Function {make_null_window()} {} {
     Fl_Window effnullwindow {
@@ -2409,8 +2409,8 @@ make_alienwah_window();
 make_distortion_window();
 make_eq_window();
 make_dynamicfilter_window();
-make_sympathetic_window();
 make_granular_window();
+make_sympathetic_window();
 
 int px=this->parent()->x();
 int py=this->parent()->y();
@@ -2424,8 +2424,8 @@ effalienwahwindow->position(px,py);
 effdistortionwindow->position(px,py);
 effeqwindow->position(px,py);
 effdynamicfilterwindow->position(px,py);
-effsympatheticwindow->position(px,py);
-effgranularwindow->position(px,py);} {}
+effgranularwindow->position(px,py);
+effsympatheticwindow->position(px,py);} {}
   }
   Function {refresh()} {open
   } {
@@ -2443,8 +2443,8 @@ effalienwahwindow->hide();
 effdistortionwindow->hide();
 effeqwindow->hide();
 effdynamicfilterwindow->hide();
-effsympatheticwindow->hide();
 effgranularwindow->hide();
+effsympatheticwindow->hide();
 
 eqband=0;
 
@@ -2486,11 +2486,11 @@ switch(efftype){
 	effdynamicfilterwindow->show();
 	break;
      case 9:
-    effsympatheticwindow->show();
-    break;
-     case 10:
         effgranularwindow->show();
         break; 
+     case 10:
+    effsympatheticwindow->show();
+    break;
     default:effnullwindow->show();
             break;
 };

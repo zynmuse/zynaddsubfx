@@ -232,7 +232,7 @@ static const rtosc::Ports local_ports = {
         }},
     {"efftype::i:c:S", rOptions(Disabled, Reverb, Echo, Chorus,
 
-     Phaser, Alienwah, Distortion, EQ, DynFilter, Sympathetic, Granular) rDefault(Disabled)
+     Phaser, Alienwah, Distortion, EQ, DynFilter, Granular, Sympathetic) rDefault(Disabled)
      rProp(parameter) rDoc("Get Effect Type"), NULL,
      rCOptionCb(obj->nefx, obj->changeeffectrt(var))},
     {"efftype:b", rProp(internal) rDoc("Pointer swap EffectMgr"), NULL,
@@ -260,8 +260,8 @@ static const rtosc::Ports local_ports = {
     rSubtype(EQ),
     rSubtype(Phaser),
     rSubtype(Reverb),
-    rSubtype(Sympathetic),
     rSubtype(Granular),
+    rSubtype(Sympathetic),
 };
 
 const rtosc::Ports &EffectMgr::ports = local_ports;
@@ -342,12 +342,12 @@ void EffectMgr::changeeffectrt(int _nefx, bool avoidSmash)
             case 8:
                 efx = memory.alloc<DynamicFilter>(pars);
                 break;
-            case 9:
-                efx = memory.alloc<Sympathetic>(pars);
-                break;
             //put more effect here
-            case 10:
+            case 9:
                 efx = memory.alloc<Granular>(pars);
+                break;
+            case 10:
+                efx = memory.alloc<Sympathetic>(pars);
                 break;
             default:
                 efx = NULL;

@@ -609,12 +609,12 @@ syseffectui->refresh();}
                 xywh {95 95 100 20} labelfont 1 labelsize 10
               }
               MenuItem {} {
-                label Sympathetic
+                label Granular
                 xywh {105 105 100 20} labelfont 1 labelsize 10
               }
               MenuItem {} {
-                label Granular
-                xywh {105 105 100 20} labelfont 1 labelsize 10
+                label Sympathetic
+                xywh {115 115 100 20} labelfont 1 labelsize 10
               }
             }
             Fl_Group syseffectuigroup {
@@ -727,12 +727,12 @@ inseffectui->show();}
                 xywh {105 105 100 20} labelfont 1 labelsize 10
               }
               MenuItem {} {
-                label Sympathetic
+                label Granular
                 xywh {115 115 100 20} labelfont 1 labelsize 10
               }
               MenuItem {} {
-                label Granular
-                xywh {115 115 100 20} labelfont 1 labelsize 10
+                label Sympathetic
+                xywh {125 125 100 20} labelfont 1 labelsize 10
               }
             }
             Fl_Group inseffectuigroup {open
@@ -1288,12 +1288,12 @@ simplesyseffectui->refresh();
                 xywh {100 100 100 20} labelfont 1 labelsize 10
               }
               MenuItem {} {
-                label Sympathetic
+                label Granular
                 xywh {110 110 100 20} labelfont 1 labelsize 10
               }
               MenuItem {} {
-                label Granular
-                xywh {110 110 100 20} labelfont 1 labelsize 10
+                label Sympathetic
+                xywh {120 120 100 20} labelfont 1 labelsize 10
               }
             }
             Fl_Group simplesyseffectuigroup {
@@ -1402,12 +1402,12 @@ simpleinseffectui->show();}
                 xywh {110 110 100 20} labelfont 1 labelsize 10
               }
               MenuItem {} {
-                label Sympathetic
+                label Granular
                 xywh {120 120 100 20} labelfont 1 labelsize 10
               }
               MenuItem {} {
-                label Granular
-                xywh {120 120 100 20} labelfont 1 labelsize 10
+                label Sympathetic
+                xywh {130 130 100 20} labelfont 1 labelsize 10
               }
             }
             Fl_Group simpleinseffectuigroup {
