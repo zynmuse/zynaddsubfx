@@ -2,6 +2,7 @@ set(zynaddsubfx_effect_SRCS
     Effects/Alienwah.cpp
 	Effects/Chorus.cpp
 	Effects/Distortion.cpp
+	Effects/CombFilterBank.cpp
 	Effects/DynamicFilter.cpp
 	Effects/Echo.cpp
 	Effects/Effect.cpp
@@ -11,5 +12,6 @@ set(zynaddsubfx_effect_SRCS
 	Effects/Phaser.cpp
 	Effects/Reverb.cpp
 	Effects/Granular.cpp
+	Effects/Sympathetic.cpp
     PARENT_SCOPE
 )
