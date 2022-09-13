@@ -2424,8 +2424,8 @@ effalienwahwindow->position(px,py);
 effdistortionwindow->position(px,py);
 effeqwindow->position(px,py);
 effdynamicfilterwindow->position(px,py);
-effgranularwindow->position(px,py);
-effsympatheticwindow->position(px,py);} {}
+effsympatheticwindow->position(px,py);
+effgranularwindow->position(px,py);} {}
   }
   Function {refresh()} {open
   } {
